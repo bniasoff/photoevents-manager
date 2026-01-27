@@ -37,7 +37,7 @@ export const updateEvent = async (
 };
 
 /**
- * Update event status fields (Paid, Ready, Sent)
+ * Update event status fields (Paid, Ready, Sent) and financial fields (Charge, Payment)
  */
 export const updateEventStatus = async (
   eventId: string,
@@ -45,6 +45,8 @@ export const updateEventStatus = async (
     Paid?: boolean;
     Ready?: boolean;
     Sent?: boolean;
+    Charge?: number;
+    Payment?: number;
   }
 ): Promise<Event> => {
   // Convert boolean to string format expected by API
@@ -58,6 +60,12 @@ export const updateEventStatus = async (
   }
   if (status.Sent !== undefined) {
     updates.Sent = status.Sent ? 'True' : '';
+  }
+  if (status.Charge !== undefined) {
+    updates.Charge = status.Charge;
+  }
+  if (status.Payment !== undefined) {
+    updates.Payment = status.Payment;
   }
 
   return updateEvent(eventId, updates);

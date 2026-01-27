@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  TextInput,
 } from 'react-native';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
@@ -37,9 +38,16 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [localEvent, setLocalEvent] = useState<Event | null>(event);
+  const [chargeText, setChargeText] = useState('');
+  const [paymentText, setPaymentText] = useState('');
+  const [isEditingFinancials, setIsEditingFinancials] = useState(false);
 
   React.useEffect(() => {
     setLocalEvent(event);
+    if (event) {
+      setChargeText(parseAmount(event.Charge).toFixed(2));
+      setPaymentText(parseAmount(event.Payment).toFixed(2));
+    }
   }, [event]);
 
   if (!event || !localEvent) return null;
@@ -99,6 +107,53 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     if (localEvent.Address) {
       const query = encodeURIComponent(localEvent.Address);
       Linking.openURL(`https://maps.google.com/?q=${query}`);
+    }
+  };
+
+  const handleFinancialUpdate = async () => {
+    const previousEvent = { ...localEvent };
+    const newCharge = parseFloat(chargeText) || 0;
+    const newPayment = parseFloat(paymentText) || 0;
+
+    // Optimistic update
+    const optimisticEvent = {
+      ...localEvent,
+      Charge: newCharge,
+      Payment: newPayment,
+    };
+    setLocalEvent(optimisticEvent);
+    setIsEditingFinancials(false);
+
+    try {
+      setIsSaving(true);
+
+      // Update via API
+      const updates = {
+        Charge: newCharge,
+        Payment: newPayment,
+      };
+      const updatedEvent = await updateEventStatus(localEvent._id, updates);
+
+      // Update parent component
+      onUpdate(updatedEvent);
+      setLocalEvent(updatedEvent);
+      setChargeText(parseAmount(updatedEvent.Charge).toFixed(2));
+      setPaymentText(parseAmount(updatedEvent.Payment).toFixed(2));
+
+      Alert.alert('Success', 'Payment information updated successfully');
+    } catch (error) {
+      // Revert on error
+      setLocalEvent(previousEvent);
+      setChargeText(parseAmount(previousEvent.Charge).toFixed(2));
+      setPaymentText(parseAmount(previousEvent.Payment).toFixed(2));
+      Alert.alert(
+        'Error',
+        'Failed to update payment information. Please try again.',
+        [{ text: 'OK' }]
+      );
+      console.error('Error updating financials:', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -172,16 +227,77 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
           {/* Financial */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Payment</Text>
-            <View style={styles.financialRow}>
-              <Text style={styles.infoText}>Charge:</Text>
-              <Text style={styles.amount}>${charge.toFixed(2)}</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Payment</Text>
+              {!isEditingFinancials ? (
+                <TouchableOpacity
+                  onPress={() => setIsEditingFinancials(true)}
+                  disabled={isSaving}
+                >
+                  <Text style={styles.editButton}>Edit</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.editActions}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsEditingFinancials(false);
+                      setChargeText(parseAmount(localEvent.Charge).toFixed(2));
+                      setPaymentText(parseAmount(localEvent.Payment).toFixed(2));
+                    }}
+                    disabled={isSaving}
+                  >
+                    <Text style={styles.cancelButton}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleFinancialUpdate}
+                    disabled={isSaving}
+                    style={styles.saveButtonContainer}
+                  >
+                    <Text style={styles.saveButton}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-            <View style={styles.financialRow}>
-              <Text style={styles.infoText}>Paid:</Text>
-              <Text style={styles.amount}>${payment.toFixed(2)}</Text>
-            </View>
-            {balance > 0 && (
+
+            {isEditingFinancials ? (
+              <>
+                <View style={styles.inputRow}>
+                  <Text style={styles.inputLabel}>Charge:</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={chargeText}
+                    onChangeText={setChargeText}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                </View>
+                <View style={styles.inputRow}>
+                  <Text style={styles.inputLabel}>Paid:</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={paymentText}
+                    onChangeText={setPaymentText}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.financialRow}>
+                  <Text style={styles.infoText}>Charge:</Text>
+                  <Text style={styles.amount}>${charge.toFixed(2)}</Text>
+                </View>
+                <View style={styles.financialRow}>
+                  <Text style={styles.infoText}>Paid:</Text>
+                  <Text style={styles.amount}>${payment.toFixed(2)}</Text>
+                </View>
+              </>
+            )}
+
+            {balance > 0 && !isEditingFinancials && (
               <View style={styles.financialRow}>
                 <Text style={styles.infoText}>Balance:</Text>
                 <Text style={[styles.amount, styles.balanceText]}>
@@ -404,5 +520,58 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: theme.spacing.xxl,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  editButton: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+  },
+  cancelButton: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  saveButtonContainer: {
+    marginLeft: theme.spacing.md,
+  },
+  saveButton: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.bold,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  inputLabel: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.medium,
+  },
+  input: {
+    flex: 1,
+    marginLeft: theme.spacing.md,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textPrimary,
+    textAlign: 'right',
+    fontWeight: theme.fontWeight.semibold,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
 });
