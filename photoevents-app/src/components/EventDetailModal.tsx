@@ -311,58 +311,54 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Status</Text>
 
-            {/* Paid Toggle */}
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleLabel}>
-                <Text style={styles.toggleIcon}>💰</Text>
-                <Text style={styles.toggleText}>Paid</Text>
+            <View style={styles.compactTogglesContainer}>
+              {/* Paid Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>💰</Text>
+                <Text style={styles.compactToggleText}>Paid</Text>
+                <Switch
+                  value={status.isPaid}
+                  onValueChange={(value) => handleStatusToggle('Paid', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: theme.colors.disabled,
+                    true: theme.statusColors.paid,
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
               </View>
-              <Switch
-                value={status.isPaid}
-                onValueChange={(value) => handleStatusToggle('Paid', value)}
-                disabled={isSaving}
-                trackColor={{
-                  false: theme.colors.disabled,
-                  true: theme.statusColors.paid,
-                }}
-                thumbColor={theme.colors.textPrimary}
-              />
-            </View>
 
-            {/* Ready Toggle */}
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleLabel}>
-                <Text style={styles.toggleIcon}>⏳</Text>
-                <Text style={styles.toggleText}>Ready</Text>
+              {/* Ready Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>⏳</Text>
+                <Text style={styles.compactToggleText}>Ready</Text>
+                <Switch
+                  value={status.isReady}
+                  onValueChange={(value) => handleStatusToggle('Ready', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: theme.colors.disabled,
+                    true: theme.statusColors.ready,
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
               </View>
-              <Switch
-                value={status.isReady}
-                onValueChange={(value) => handleStatusToggle('Ready', value)}
-                disabled={isSaving}
-                trackColor={{
-                  false: theme.colors.disabled,
-                  true: theme.statusColors.ready,
-                }}
-                thumbColor={theme.colors.textPrimary}
-              />
-            </View>
 
-            {/* Sent Toggle */}
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleLabel}>
-                <Text style={styles.toggleIcon}>📤</Text>
-                <Text style={styles.toggleText}>Sent</Text>
+              {/* Sent Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>📤</Text>
+                <Text style={styles.compactToggleText}>Sent</Text>
+                <Switch
+                  value={status.isSent}
+                  onValueChange={(value) => handleStatusToggle('Sent', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: theme.colors.disabled,
+                    true: theme.statusColors.sent,
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
               </View>
-              <Switch
-                value={status.isSent}
-                onValueChange={(value) => handleStatusToggle('Sent', value)}
-                disabled={isSaving}
-                trackColor={{
-                  false: theme.colors.disabled,
-                  true: theme.statusColors.sent,
-                }}
-                thumbColor={theme.colors.textPrimary}
-              />
             </View>
           </View>
 
@@ -573,5 +569,26 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.semibold,
     borderWidth: 1,
     borderColor: theme.colors.border,
+  },
+  compactTogglesContainer: {
+    gap: theme.spacing.xs,
+  },
+  compactToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.divider,
+  },
+  compactToggleIcon: {
+    fontSize: 20,
+    marginRight: theme.spacing.xs,
+  },
+  compactToggleText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.medium,
+    flex: 1,
   },
 });
