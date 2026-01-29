@@ -16,8 +16,17 @@ export const groupEventsByStatus = (
   events.forEach((event) => {
     const status = getEventStatus(event);
 
-    // Check unpaid
-    if (!status.isPaid) {
+    // Check if phone contains 'Weinman' (treat as paid for filtering)
+    const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+
+    // Check if event date is in the future
+    const eventDate = new Date(event.EventDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isFutureEvent = eventDate >= today;
+
+    // Check unpaid (exclude Weinman and future events)
+    if (!status.isPaid && !isWeinman && !isFutureEvent) {
       groups.unpaid.push(event);
     }
 

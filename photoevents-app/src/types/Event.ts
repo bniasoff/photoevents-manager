@@ -1,5 +1,6 @@
 export interface Event {
-  _id: string;
+  id: string; // Xata format (primary)
+  _id?: string; // MongoDB format (backwards compatibility)
   ID?: string;
   Name: string;
   Place: string;
@@ -32,6 +33,10 @@ export type EventCategory =
   | 'Pidyon Haben'
   | 'School'
   | 'Photoshoot'
+  | 'CM'
+  | 'Parlor Meeting'
+  | 'Siyum'
+  | "L'Chaim"
   | 'Other';
 
 export interface EventStatus {

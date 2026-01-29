@@ -19,8 +19,10 @@ import {
   formatPhoneNumber,
   getEventStatus,
   parseAmount,
+  parseBoolean,
+  getEventId,
 } from '../utils/eventHelpers';
-import { formatEventDateTime } from '../utils/dateHelpers';
+import { formatEventDateTime, formatTime } from '../utils/dateHelpers';
 import { updateEventStatus } from '../services/api';
 
 interface EventDetailModalProps {
@@ -64,6 +66,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   ) => {
     const previousEvent = { ...localEvent };
 
+    console.log(`=== STATUS TOGGLE: ${field} ===`);
+    console.log('Event ID:', getEventId(localEvent));
+    console.log('Event Name:', localEvent.Name);
+    console.log('Old value:', localEvent[field]);
+    console.log('New value:', newValue);
+
     // Optimistic update
     const optimisticEvent = {
       ...localEvent,
@@ -74,24 +82,24 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     try {
       setIsSaving(true);
 
-      // Update via API
-      const updates = { [field]: newValue };
-      const updatedEvent = await updateEventStatus(localEvent._id, updates);
+      // Update via API - same for all fields
+      const updates: { [key: string]: boolean } = { [field]: newValue };
+      const updatedEvent = await updateEventStatus(getEventId(localEvent), updates);
 
-      // Update parent component
+      // Update with whatever the server returned - trust the server completely
       onUpdate(updatedEvent);
       setLocalEvent(updatedEvent);
 
-      Alert.alert('Success', `Event status updated successfully`);
+      // Silent success - toggle color change is enough feedback
     } catch (error) {
       // Revert on error
       setLocalEvent(previousEvent);
       Alert.alert(
         'Error',
-        'Failed to update event. Please try again.',
+        `Failed to update ${field} status. Please try again.`,
         [{ text: 'OK' }]
       );
-      console.error('Error updating event:', error);
+      console.error(`Error updating ${field}:`, error);
     } finally {
       setIsSaving(false);
     }
@@ -115,6 +123,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     const newCharge = parseFloat(chargeText) || 0;
     const newPayment = parseFloat(paymentText) || 0;
 
+    console.log('=== PAYMENT UPDATE START ===');
+    console.log('Event ID:', getEventId(localEvent));
+    console.log('Event Name:', localEvent.Name);
+    console.log('OLD values - Charge:', localEvent.Charge, 'Payment:', localEvent.Payment);
+    console.log('NEW values - Charge:', newCharge, 'Payment:', newPayment);
+    console.log('Input text - chargeText:', chargeText, 'paymentText:', paymentText);
+
     // Optimistic update
     const optimisticEvent = {
       ...localEvent,
@@ -132,17 +147,25 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         Charge: newCharge,
         Payment: newPayment,
       };
-      const updatedEvent = await updateEventStatus(localEvent._id, updates);
+      console.log('Calling updateEventStatus with:', updates);
+      const updatedEvent = await updateEventStatus(getEventId(localEvent), updates);
 
       // Update parent component
+      console.log('=== SERVER RESPONSE ===');
+      console.log('Updated Charge from server:', updatedEvent.Charge);
+      console.log('Updated Payment from server:', updatedEvent.Payment);
+      console.log('Full updated event:', JSON.stringify(updatedEvent, null, 2));
+
       onUpdate(updatedEvent);
       setLocalEvent(updatedEvent);
       setChargeText(parseAmount(updatedEvent.Charge).toFixed(2));
       setPaymentText(parseAmount(updatedEvent.Payment).toFixed(2));
 
-      Alert.alert('Success', 'Payment information updated successfully');
+      console.log('=== PAYMENT UPDATE COMPLETE ===');
+      // Silent success - field update is enough feedback
     } catch (error) {
       // Revert on error
+      console.error('Error updating financials:', error);
       setLocalEvent(previousEvent);
       setChargeText(parseAmount(previousEvent.Charge).toFixed(2));
       setPaymentText(parseAmount(previousEvent.Payment).toFixed(2));
@@ -151,7 +174,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         'Failed to update payment information. Please try again.',
         [{ text: 'OK' }]
       );
-      console.error('Error updating financials:', error);
+      console.error('Full error details:', error);
     } finally {
       setIsSaving(false);
     }
@@ -187,42 +210,59 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             <Text style={styles.category}>{localEvent.Category}</Text>
           </View>
 
-          {/* Location Info */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Location</Text>
-            {localEvent.Place && (
-              <Text style={styles.infoText}>📍 {localEvent.Place}</Text>
-            )}
-            {localEvent.Address && (
-              <TouchableOpacity onPress={handleAddressPress}>
-                <Text style={styles.linkText}>{localEvent.Address}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Status Toggles */}
+          <View style={styles.statusSection}>
+            <Text style={styles.statusTitle}>Status</Text>
 
-          {/* Contact */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Contact</Text>
-            {localEvent.Phone && (
-              <TouchableOpacity onPress={handlePhonePress}>
-                <Text style={styles.linkText}>
-                  📞 {formatPhoneNumber(localEvent.Phone)}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+            <View style={styles.compactTogglesContainer}>
+              {/* Paid Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>💰</Text>
+                <Text style={styles.compactToggleText}>Paid</Text>
+                <Switch
+                  value={status.isPaid}
+                  onValueChange={(value) => handleStatusToggle('Paid', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when not paid
+                    true: '#22c55e', // Green when paid
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
 
-          {/* Date & Time */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Schedule</Text>
-            <Text style={styles.infoText}>
-              📅 {formatEventDateTime(localEvent)}
-            </Text>
-            {localEvent.End && (
-              <Text style={styles.infoText}>
-                ⏱️ {localEvent.Start} - {localEvent.End}
-              </Text>
-            )}
+              {/* Ready Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>⏳</Text>
+                <Text style={styles.compactToggleText}>Ready</Text>
+                <Switch
+                  value={status.isReady}
+                  onValueChange={(value) => handleStatusToggle('Ready', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when not ready
+                    true: '#22c55e', // Green when ready
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
+
+              {/* Sent Toggle */}
+              <View style={styles.compactToggle}>
+                <Text style={styles.compactToggleIcon}>📤</Text>
+                <Text style={styles.compactToggleText}>Sent</Text>
+                <Switch
+                  value={status.isSent}
+                  onValueChange={(value) => handleStatusToggle('Sent', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when not sent
+                    true: '#22c55e', // Green when sent
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
+            </View>
           </View>
 
           {/* Financial */}
@@ -307,59 +347,42 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             )}
           </View>
 
-          {/* Status Toggles */}
+          {/* Contact */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Status</Text>
+            <Text style={styles.sectionTitle}>Contact</Text>
+            {localEvent.Phone && (
+              <TouchableOpacity onPress={handlePhonePress}>
+                <Text style={styles.linkText}>
+                  📞 {formatPhoneNumber(localEvent.Phone)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-            <View style={styles.compactTogglesContainer}>
-              {/* Paid Toggle */}
-              <View style={styles.compactToggle}>
-                <Text style={styles.compactToggleIcon}>💰</Text>
-                <Text style={styles.compactToggleText}>Paid</Text>
-                <Switch
-                  value={status.isPaid}
-                  onValueChange={(value) => handleStatusToggle('Paid', value)}
-                  disabled={isSaving}
-                  trackColor={{
-                    false: theme.colors.disabled,
-                    true: theme.statusColors.paid,
-                  }}
-                  thumbColor={theme.colors.textPrimary}
-                />
-              </View>
+          {/* Location Info */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Location</Text>
+            {localEvent.Place && (
+              <Text style={styles.infoText}>📍 {localEvent.Place}</Text>
+            )}
+            {localEvent.Address && (
+              <TouchableOpacity onPress={handleAddressPress}>
+                <Text style={styles.linkText}>{localEvent.Address}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-              {/* Ready Toggle */}
-              <View style={styles.compactToggle}>
-                <Text style={styles.compactToggleIcon}>⏳</Text>
-                <Text style={styles.compactToggleText}>Ready</Text>
-                <Switch
-                  value={status.isReady}
-                  onValueChange={(value) => handleStatusToggle('Ready', value)}
-                  disabled={isSaving}
-                  trackColor={{
-                    false: theme.colors.disabled,
-                    true: theme.statusColors.ready,
-                  }}
-                  thumbColor={theme.colors.textPrimary}
-                />
-              </View>
-
-              {/* Sent Toggle */}
-              <View style={styles.compactToggle}>
-                <Text style={styles.compactToggleIcon}>📤</Text>
-                <Text style={styles.compactToggleText}>Sent</Text>
-                <Switch
-                  value={status.isSent}
-                  onValueChange={(value) => handleStatusToggle('Sent', value)}
-                  disabled={isSaving}
-                  trackColor={{
-                    false: theme.colors.disabled,
-                    true: theme.statusColors.sent,
-                  }}
-                  thumbColor={theme.colors.textPrimary}
-                />
-              </View>
-            </View>
+          {/* Date & Time */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Schedule</Text>
+            <Text style={styles.infoText}>
+              📅 {formatEventDateTime(localEvent)}
+            </Text>
+            {localEvent.End && (
+              <Text style={styles.infoText}>
+                ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}
+              </Text>
+            )}
           </View>
 
           {/* Additional Info */}
@@ -427,6 +450,20 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.divider,
+  },
+  statusSection: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.divider,
+  },
+  statusTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   nameRow: {
     flexDirection: 'row',
@@ -571,22 +608,20 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   compactTogglesContainer: {
-    gap: theme.spacing.xs,
+    gap: 0,
   },
   compactToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.divider,
+    paddingVertical: 6,
   },
   compactToggleIcon: {
-    fontSize: 20,
+    fontSize: 16,
     marginRight: theme.spacing.xs,
   },
   compactToggleText: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textPrimary,
     fontWeight: theme.fontWeight.medium,
     flex: 1,

@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AllEventsScreen } from '../screens/AllEventsScreen';
 import { ByDateScreen } from '../screens/ByDateScreen';
+import { ByCategoryScreen } from '../screens/ByCategoryScreen';
 import { ByStatusScreen } from '../screens/ByStatusScreen';
 import { CalendarScreen } from '../screens/CalendarScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
@@ -58,6 +59,15 @@ export const AppNavigator: React.FC = () => {
           options={{
             tabBarIcon: ({ color }) => (
               <TabIcon emoji="📅" color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="By Category"
+          component={ByCategoryScreen}
+          options={{
+            tabBarIcon: ({ color }) => (
+              <TabIcon emoji="📂" color={color} />
             ),
           }}
         />

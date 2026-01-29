@@ -15,7 +15,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
-import { sortEventsByDate } from '../utils/eventHelpers';
+import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
 
 export const CalendarScreen: React.FC = () => {
@@ -112,12 +112,12 @@ export const CalendarScreen: React.FC = () => {
   const handleEventUpdate = (updatedEvent: Event) => {
     setEvents((prevEvents) =>
       prevEvents.map((event) =>
-        event._id === updatedEvent._id ? updatedEvent : event
+        getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
     // Update events for selected date
     updateEventsForDate(selectedDate, events.map((event) =>
-      event._id === updatedEvent._id ? updatedEvent : event
+      getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
     ));
   };
 
@@ -207,7 +207,7 @@ export const CalendarScreen: React.FC = () => {
           <View style={styles.eventsList}>
             {eventsOnSelectedDate.map((event) => (
               <EventCard
-                key={event._id}
+                key={getEventId(event)}
                 event={event}
                 onPress={() => handleEventPress(event)}
               />

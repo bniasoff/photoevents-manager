@@ -14,6 +14,20 @@ import {
 import { Event, DateGroupKey } from '../types/Event';
 
 /**
+ * Format time from HH:MM:SS to 12-hour format
+ */
+export const formatTime = (timeString: string): string => {
+  try {
+    if (!timeString) return '';
+    const [hours, minutes] = timeString.split(':');
+    const date = new Date(2000, 0, 1, parseInt(hours), parseInt(minutes));
+    return format(date, 'h:mm a');
+  } catch (error) {
+    return timeString;
+  }
+};
+
+/**
  * Format event date and time for display
  */
 export const formatEventDateTime = (event: Event): string => {

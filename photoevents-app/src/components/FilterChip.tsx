@@ -31,13 +31,14 @@ export const FilterChip: React.FC<FilterChipProps> = ({
 
 const styles = StyleSheet.create({
   chip: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
-    marginRight: theme.spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -47,10 +48,10 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 14,
-    marginRight: theme.spacing.xs,
+    marginRight: 4,
   },
   label: {
-    fontSize: theme.fontSize.sm,
+    fontSize: 14,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.textSecondary,
   },

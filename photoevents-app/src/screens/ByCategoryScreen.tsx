@@ -6,7 +6,7 @@ import {
   RefreshControl,
   Text,
 } from 'react-native';
-import { Event, DateGroupKey } from '../types/Event';
+import { Event, EventCategory } from '../types/Event';
 import { EventCard } from '../components/EventCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -14,20 +14,12 @@ import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
-import { groupEventsByDate, getDateGroupLabel } from '../utils/dateHelpers';
+import { groupEventsByYearAndCategory, getCategoryIcon } from '../utils/categoryHelpers';
 import { theme } from '../theme/theme';
 
-export const ByDateScreen: React.FC = () => {
+export const ByCategoryScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
-  const [groupedEvents, setGroupedEvents] = useState<Record<DateGroupKey, Event[]>>({
-    lastWeek: [],
-    thisWeek: [],
-    nextWeek: [],
-    lastMonth: [],
-    thisMonth: [],
-    nextMonth: [],
-    future: [],
-  });
+  const [groupedEvents, setGroupedEvents] = useState<Record<string, Record<EventCategory, Event[]>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -40,7 +32,7 @@ export const ByDateScreen: React.FC = () => {
       const data = await fetchEvents();
       const sorted = sortEventsByDate(data);
       setEvents(sorted);
-      const grouped = groupEventsByDate(sorted);
+      const grouped = groupEventsByYearAndCategory(sorted);
       setGroupedEvents(grouped);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events');
@@ -76,7 +68,7 @@ export const ByDateScreen: React.FC = () => {
       )
     );
     // Re-group events after update
-    const grouped = groupEventsByDate(events.map((event) =>
+    const grouped = groupEventsByYearAndCategory(events.map((event) =>
       getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
     ));
     setGroupedEvents(grouped);
@@ -90,20 +82,31 @@ export const ByDateScreen: React.FC = () => {
     return <ErrorMessage message={error} onRetry={loadEvents} />;
   }
 
-  const dateGroups: DateGroupKey[] = [
-    'thisWeek',
-    'nextWeek',
-    'lastWeek',
-    'thisMonth',
-    'nextMonth',
-    'lastMonth',
-    'future',
+  // Category order for display
+  const categories: EventCategory[] = [
+    'Bar Mitzvah',
+    'Vort',
+    'Bris',
+    'Pidyon Haben',
+    'School',
+    'Photoshoot',
+    'Wedding',
+    'CM',
+    'Parlor Meeting',
+    'Siyum',
+    "L'Chaim",
   ];
 
-  const totalEvents = Object.values(groupedEvents).reduce(
-    (sum, group) => sum + group.length,
-    0
-  );
+  // Get sorted years (most recent first)
+  const years = Object.keys(groupedEvents).sort((a, b) => parseInt(b) - parseInt(a));
+
+  // Calculate total events
+  const totalEvents = years.reduce((sum, year) => {
+    return sum + Object.values(groupedEvents[year]).reduce(
+      (yearSum, categoryEvents) => yearSum + categoryEvents.length,
+      0
+    );
+  }, 0);
 
   return (
     <ScrollView
@@ -124,32 +127,54 @@ export const ByDateScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* Grouped Sections */}
-      {dateGroups.map((groupKey) => {
-        const eventsInGroup = groupedEvents[groupKey];
-        if (eventsInGroup.length === 0) return null;
+      {/* Year Sections */}
+      {years.map((year) => {
+        const yearCategories = groupedEvents[year];
+        const yearEventCount = Object.values(yearCategories).reduce(
+          (sum, categoryEvents) => sum + categoryEvents.length,
+          0
+        );
+
+        if (yearEventCount === 0) return null;
 
         return (
           <CollapsibleSection
-            key={groupKey}
-            title={getDateGroupLabel(groupKey)}
-            count={eventsInGroup.length}
+            key={year}
+            title={`📅 ${year}`}
+            count={yearEventCount}
             defaultExpanded={false}
           >
-            {eventsInGroup.map((event) => (
-              <EventCard
-                key={getEventId(event)}
-                event={event}
-                onPress={() => handleEventPress(event)}
-              />
-            ))}
+            {/* Category Sections within Year */}
+            <View style={styles.categoryContainer}>
+              {categories.map((category) => {
+                const eventsInCategory = yearCategories[category];
+                if (eventsInCategory.length === 0) return null;
+
+                return (
+                  <CollapsibleSection
+                    key={`${year}-${category}`}
+                    title={`${getCategoryIcon(category)} ${category}`}
+                    count={eventsInCategory.length}
+                    defaultExpanded={false}
+                  >
+                    {eventsInCategory.map((event) => (
+                      <EventCard
+                        key={getEventId(event)}
+                        event={event}
+                        onPress={() => handleEventPress(event)}
+                      />
+                    ))}
+                  </CollapsibleSection>
+                );
+              })}
+            </View>
           </CollapsibleSection>
         );
       })}
 
       {totalEvents === 0 && (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>📅</Text>
+          <Text style={styles.emptyIcon}>📂</Text>
           <Text style={styles.emptyText}>No events available</Text>
         </View>
       )}
@@ -178,6 +203,9 @@ const styles = StyleSheet.create({
   headerText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
+  },
+  categoryContainer: {
+    marginLeft: theme.spacing.lg,
   },
   emptyContainer: {
     flex: 1,

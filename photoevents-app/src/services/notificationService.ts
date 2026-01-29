@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Event } from '../types/Event';
-import { getEventStatus } from '../utils/eventHelpers';
+import { getEventStatus, getEventId } from '../utils/eventHelpers';
 import { parseISO, differenceInHours, isAfter } from 'date-fns';
 
 // Configure notification handling
@@ -76,7 +76,7 @@ export const scheduleEventNotification = async (
       content: {
         title: `Event Reminder: ${event.Name}`,
         body: `${event.Category} at ${event.Place || 'venue'} - ${hoursBeforeEvent}hrs away`,
-        data: { eventId: event._id, type: 'upcoming' },
+        data: { eventId: getEventId(event), type: 'upcoming' },
         sound: true,
       },
       trigger: notificationTime,
@@ -117,7 +117,7 @@ export const scheduleUnpaidNotification = async (
       content: {
         title: '💰 Payment Reminder',
         body: `${event.Name} - ${event.Category} event payment pending`,
-        data: { eventId: event._id, type: 'unpaid' },
+        data: { eventId: getEventId(event), type: 'unpaid' },
         sound: true,
       },
       trigger: notificationTime,
@@ -151,7 +151,7 @@ export const scheduleReadyNotSentNotification = async (
       content: {
         title: '📤 Ready to Send',
         body: `${event.Name} - ${event.Category} photos are ready but not sent`,
-        data: { eventId: event._id, type: 'readyNotSent' },
+        data: { eventId: getEventId(event), type: 'readyNotSent' },
         sound: true,
       },
       trigger: notificationTime,

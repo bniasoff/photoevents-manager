@@ -13,7 +13,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
-import { sortEventsByDate } from '../utils/eventHelpers';
+import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import {
   groupEventsByStatus,
   getStatusGroupLabel,
@@ -72,12 +72,12 @@ export const ByStatusScreen: React.FC = () => {
   const handleEventUpdate = (updatedEvent: Event) => {
     setEvents((prevEvents) =>
       prevEvents.map((event) =>
-        event._id === updatedEvent._id ? updatedEvent : event
+        getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
     // Re-group events after update
     const grouped = groupEventsByStatus(events.map((event) =>
-      event._id === updatedEvent._id ? updatedEvent : event
+      getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
     ));
     setGroupedEvents(grouped);
   };
@@ -126,12 +126,12 @@ export const ByStatusScreen: React.FC = () => {
             title={getStatusGroupLabel(groupKey)}
             count={eventsInGroup.length}
             icon={getStatusGroupIcon(groupKey)}
-            defaultExpanded={eventsInGroup.length > 0}
+            defaultExpanded={false}
           >
             {eventsInGroup.length > 0 ? (
               eventsInGroup.map((event) => (
                 <EventCard
-                  key={event._id}
+                  key={getEventId(event)}
                   event={event}
                   onPress={() => handleEventPress(event)}
                 />

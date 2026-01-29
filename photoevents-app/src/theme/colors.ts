@@ -10,7 +10,7 @@ export const colors = {
   primaryLight: '#60A5FA',
 
   // Status colors
-  success: '#10B981',
+  success: '#059669', // Darker green for better contrast
   warning: '#F59E0B',
   error: '#EF4444',
   info: '#3B82F6',
@@ -31,10 +31,10 @@ export const colors = {
 };
 
 export const statusColors = {
-  paid: colors.success,
-  unpaid: colors.error,
-  ready: colors.info,
-  notReady: colors.warning,
-  sent: colors.purple,
-  notSent: '#6B7280',
+  paid: colors.success,      // Green
+  unpaid: colors.error,       // Red
+  ready: colors.success,      // Green
+  notReady: colors.error,     // Red
+  sent: colors.success,       // Green
+  notSent: colors.error,      // Red
 };

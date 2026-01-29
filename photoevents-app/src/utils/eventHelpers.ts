@@ -1,6 +1,13 @@
 import { Event, EventStatus, EventCategory } from '../types/Event';
 
 /**
+ * Get event ID (supports both Xata 'id' and MongoDB '_id' formats)
+ */
+export const getEventId = (event: Event): string => {
+  return event.id || event._id || '';
+};
+
+/**
  * Parse boolean-like values from API (handles "True", "true", empty, false)
  */
 export const parseBoolean = (value: string | boolean | undefined | null): boolean => {

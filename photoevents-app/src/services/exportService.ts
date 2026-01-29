@@ -266,11 +266,20 @@ export const generatePaymentSummary = (events: Event[]): PaymentSummary => {
       const balance = charge - payment;
       const status = getEventStatus(event);
 
+      // Check if phone contains 'Weinman' (treat as paid for counting)
+      const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+
+      // Check if event date is in the future
+      const eventDate = new Date(event.EventDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isFutureEvent = eventDate >= today;
+
       acc.totalCharge += charge;
       acc.totalPaid += payment;
       acc.totalBalance += balance;
-      acc.paidEvents += status.isPaid ? 1 : 0;
-      acc.unpaidEvents += !status.isPaid ? 1 : 0;
+      acc.paidEvents += status.isPaid || isWeinman || isFutureEvent ? 1 : 0;
+      acc.unpaidEvents += !status.isPaid && !isWeinman && !isFutureEvent ? 1 : 0;
 
       return acc;
     },

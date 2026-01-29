@@ -16,7 +16,7 @@ import { FilterChip } from '../components/FilterChip';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { NotificationBanner } from '../components/NotificationBanner';
 import { fetchEvents } from '../services/api';
-import { searchEvents, sortEventsByDate, getEventStatus } from '../utils/eventHelpers';
+import { searchEvents, sortEventsByDate, getEventStatus, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
 
 type StatusFilter = 'all' | 'unpaid' | 'notReady' | 'readyNotSent';
@@ -58,9 +58,18 @@ export const AllEventsScreen: React.FC = () => {
     if (statusFilter !== 'all') {
       filtered = filtered.filter((event) => {
         const status = getEventStatus(event);
+        // Check if phone contains 'Weinman' (treat as paid for filtering)
+        const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+
+        // Check if event date is in the future
+        const eventDate = new Date(event.EventDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const isFutureEvent = eventDate >= today;
+
         switch (statusFilter) {
           case 'unpaid':
-            return !status.isPaid;
+            return !status.isPaid && !isWeinman && !isFutureEvent;
           case 'notReady':
             return !status.isReady;
           case 'readyNotSent':
@@ -93,7 +102,7 @@ export const AllEventsScreen: React.FC = () => {
     // Update events array with the new data
     setEvents((prevEvents) =>
       prevEvents.map((event) =>
-        event._id === updatedEvent._id ? updatedEvent : event
+        getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
   };
@@ -132,12 +141,7 @@ export const AllEventsScreen: React.FC = () => {
       <NotificationBanner events={events} />
 
       {/* Filter Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterContainer}
-        contentContainerStyle={styles.filterContent}
-      >
+      <View style={styles.filterContainer}>
         <FilterChip
           label="All"
           isActive={statusFilter === 'all'}
@@ -156,12 +160,12 @@ export const AllEventsScreen: React.FC = () => {
           onPress={() => setStatusFilter('notReady')}
         />
         <FilterChip
-          label="Ready/Not Sent"
-          icon="✅"
+          label="Not Sent"
+          icon="📤"
           isActive={statusFilter === 'readyNotSent'}
           onPress={() => setStatusFilter('readyNotSent')}
         />
-      </ScrollView>
+      </View>
 
       {/* Event Count */}
       <View style={styles.countContainer}>
@@ -244,11 +248,10 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
   },
   filterContainer: {
-    maxHeight: 50,
-  },
-  filterContent: {
+    flexDirection: 'row',
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.sm,
   },
   countContainer: {
     paddingHorizontal: theme.spacing.md,
