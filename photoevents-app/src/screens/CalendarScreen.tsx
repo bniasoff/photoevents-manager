@@ -6,6 +6,7 @@ import {
   RefreshControl,
   Text,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { format, parseISO } from 'date-fns';
@@ -18,6 +19,73 @@ import { CreateEventModal } from '../components/CreateEventModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
+import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+
+const escapeICS = (str: string): string =>
+  str
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '');
+
+const generateICS = (events: Event[]): string => {
+  let ics =
+    'BEGIN:VCALENDAR\r\n' +
+    'VERSION:2.0\r\n' +
+    'PRODID:-//PhotoEvents//EN\r\n' +
+    'X-WR-CALNAME:Photo Events\r\n';
+
+  events.forEach((event) => {
+    try {
+      const eventDate = parseISO(event.EventDate);
+      const dateStr = format(eventDate, 'yyyyMMdd');
+
+      ics += 'BEGIN:VEVENT\r\n';
+
+      if (event.Start) {
+        const [sh, sm, ss] = event.Start.split(':');
+        ics += `DTSTART:${dateStr}T${sh}${sm}${ss || '00'}\r\n`;
+        if (event.End) {
+          const [eh, em, es] = event.End.split(':');
+          ics += `DTEND:${dateStr}T${eh}${em}${es || '00'}\r\n`;
+        } else {
+          const endH = (parseInt(sh, 10) + 1).toString().padStart(2, '0');
+          ics += `DTEND:${dateStr}T${endH}${sm}${ss || '00'}\r\n`;
+        }
+      } else {
+        // All-day event — ICS end date is exclusive (next day)
+        ics += `DTSTART;VALUE=DATE:${dateStr}\r\n`;
+        const nextDay = format(
+          new Date(eventDate.getTime() + 86400000),
+          'yyyyMMdd'
+        );
+        ics += `DTEND;VALUE=DATE:${nextDay}\r\n`;
+      }
+
+      ics += `SUMMARY:${escapeICS(event.Name)}\r\n`;
+
+      if (event.Place) {
+        let location = event.Place;
+        if (event.Address) location += `, ${event.Address}`;
+        ics += `LOCATION:${escapeICS(location)}\r\n`;
+      }
+
+      if (event.Info) {
+        ics += `DESCRIPTION:${escapeICS(event.Info)}\r\n`;
+      }
+
+      ics += `UID:${event.id || event._id || 'unknown'}@photoevents\r\n`;
+      ics += 'END:VEVENT\r\n';
+    } catch (err) {
+      console.error('Error generating ICS for event:', err);
+    }
+  });
+
+  ics += 'END:VCALENDAR\r\n';
+  return ics;
+};
 
 export const CalendarScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
@@ -47,8 +115,16 @@ export const CalendarScreen: React.FC = () => {
           const date = format(parseISO(event.EventDate), 'yyyy-MM-dd');
           if (!marks[date]) {
             marks[date] = {
-              marked: true,
-              dotColor: theme.colors.primary,
+              customStyles: {
+                container: {
+                  backgroundColor: theme.colors.purple,
+                  borderRadius: 18,
+                },
+                text: {
+                  color: '#FFFFFF',
+                  fontWeight: 'bold',
+                },
+              },
               events: [],
             };
           }
@@ -127,6 +203,20 @@ export const CalendarScreen: React.FC = () => {
     loadEvents();
   };
 
+  const handleExport = async () => {
+    try {
+      const icsContent = generateICS(events);
+      const filePath = cacheDirectory + 'PhotoEvents.ics';
+      await writeAsStringAsync(filePath, icsContent);
+      await Sharing.shareAsync(filePath, {
+        mimeType: 'text/calendar',
+        dialogTitle: 'Export Photo Events',
+      });
+    } catch (err) {
+      Alert.alert('Export Failed', String(err));
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading calendar..." />;
   }
@@ -140,8 +230,16 @@ export const CalendarScreen: React.FC = () => {
     ...markedDates,
     [selectedDate]: {
       ...markedDates[selectedDate],
-      selected: true,
-      selectedColor: theme.colors.primary,
+      customStyles: {
+        container: {
+          backgroundColor: theme.colors.primary,
+          borderRadius: 18,
+        },
+        text: {
+          color: '#FFFFFF',
+          fontWeight: 'bold',
+        },
+      },
     },
   };
 
@@ -162,16 +260,13 @@ export const CalendarScreen: React.FC = () => {
           current={selectedDate}
           onDayPress={handleDayPress}
           markedDates={markedDatesWithSelection}
+          markingType="custom"
           theme={{
             calendarBackground: theme.colors.backgroundSecondary,
             textSectionTitleColor: theme.colors.textSecondary,
-            selectedDayBackgroundColor: theme.colors.primary,
-            selectedDayTextColor: theme.colors.textPrimary,
             todayTextColor: theme.colors.primary,
             dayTextColor: theme.colors.textPrimary,
             textDisabledColor: theme.colors.disabled,
-            dotColor: theme.colors.primary,
-            selectedDotColor: theme.colors.textPrimary,
             arrowColor: theme.colors.primary,
             monthTextColor: theme.colors.textPrimary,
             indicatorColor: theme.colors.primary,
@@ -185,10 +280,16 @@ export const CalendarScreen: React.FC = () => {
           style={styles.calendar}
         />
 
-        {/* Today Button */}
-        <TouchableOpacity style={styles.todayButton} onPress={handleTodayPress}>
-          <Text style={styles.todayButtonText}>📅 Jump to Today</Text>
-        </TouchableOpacity>
+        {/* Toolbar: Today + Export */}
+        <View style={styles.toolbarRow}>
+          <TouchableOpacity style={styles.todayButton} onPress={handleTodayPress}>
+            <Text style={styles.todayButtonText}>📅 Jump to Today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
+            <Text style={styles.exportButtonIcon}>📤</Text>
+            <Text style={styles.exportButtonText}>Export</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Selected Date Header */}
         <View style={styles.dateHeader}>
@@ -260,9 +361,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  toolbarRow: {
+    flexDirection: 'row',
+    margin: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
   todayButton: {
     backgroundColor: theme.colors.cardBackground,
-    margin: theme.spacing.md,
+    flex: 1,
     paddingVertical: theme.spacing.md,
     borderRadius: theme.borderRadius.md,
     alignItems: 'center',
@@ -272,6 +378,24 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textPrimary,
+  },
+  exportButton: {
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    ...theme.shadows.small,
+  },
+  exportButtonIcon: {
+    fontSize: 18,
+  },
+  exportButtonText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textSecondary,
   },
   dateHeader: {
     backgroundColor: theme.colors.cardBackgroundAlt,

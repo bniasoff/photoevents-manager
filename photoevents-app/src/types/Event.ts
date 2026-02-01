@@ -18,6 +18,8 @@ export interface Event {
   End: string; // HH:MM:SS
   Phone: string;
   Category: string;
+  SimchaInitiative?: boolean;
+  Projector?: boolean;
   Referral?: string | null;
   CreatedDate?: string;
   EtagID?: string;

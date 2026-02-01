@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -41,6 +41,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [simchaInitiative, setSimchaInitiative] = useState(false);
+  const [projector, setProjector] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
@@ -49,6 +51,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [newPlaceText, setNewPlaceText] = useState('');
   const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
 
+  const scrollRef = useRef<ScrollView | null>(null);
+  const placeYRef = useRef<number>(0);
+  const searchInputRef = useRef<TextInput | null>(null);
+
   useEffect(() => {
     if (visible) {
       fetchPlaces().then((map) => {
@@ -56,6 +62,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       });
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (isPlaceOpen) {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: placeYRef.current - 40, animated: true });
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isPlaceOpen]);
 
   const categories: string[] = [
     'Bar Mitzvah',
@@ -263,7 +278,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   };
 
   const formatPhone = (raw: string): string => {
-    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    let digits = raw.replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+    digits = digits.slice(0, 10);
     if (digits.length <= 3) return digits;
     if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -319,6 +336,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         Address: address.trim(),
         Phone: phone.trim(),
         Info: notes.trim(),
+        SimchaInitiative: simchaInitiative,
+        Projector: projector,
         Charge: 0,
         Payment: 0,
         Paid: false,
@@ -349,6 +368,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setAddress('');
     setPhone('');
     setNotes('');
+    setSimchaInitiative(false);
+    setProjector(false);
   };
 
   const displayDate = (() => {
@@ -394,7 +415,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false} scrollEnabled={!isPlaceOpen && !isCategoryOpen}>
           {/* Date Badge */}
           <View style={styles.dateBadge}>
             <Text style={styles.dateBadgeIcon}>📅</Text>
@@ -632,21 +653,28 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           </View>
 
           {/* Place */}
-          <View style={styles.section}>
+          <View style={styles.section} onLayout={(e) => { placeYRef.current = e.nativeEvent.layout.y; }}>
             <Text style={styles.label}>Place</Text>
-            <TouchableOpacity
-              style={[styles.comboBox, isPlaceOpen && styles.comboBoxOpen]}
-              onPress={() => setIsPlaceOpen(!isPlaceOpen)}
-            >
-              <View style={styles.comboBoxValue}>
-                {place ? (
-                  <Text style={styles.comboBoxText}>{place}</Text>
-                ) : (
-                  <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>
-                )}
-              </View>
-              <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
-            </TouchableOpacity>
+            <View style={styles.placeComboRow}>
+              <TouchableOpacity
+                style={[styles.comboBox, isPlaceOpen && styles.comboBoxOpen, styles.placeComboFlex]}
+                onPress={() => setIsPlaceOpen(!isPlaceOpen)}
+              >
+                <View style={styles.comboBoxValue}>
+                  {place ? (
+                    <Text style={styles.comboBoxText}>{place}</Text>
+                  ) : (
+                    <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>
+                  )}
+                </View>
+                <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {place ? (
+                <TouchableOpacity onPress={() => { setPlace(''); setAddress(''); }}>
+                  <Text style={styles.searchClear}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
 
             {isPlaceOpen && (() => {
               const search = newPlaceText.toLowerCase();
@@ -659,12 +687,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 <View style={styles.comboBoxDropdown}>
                   <View style={styles.searchRow}>
                     <TextInput
+                      ref={searchInputRef}
                       style={styles.searchInput}
                       value={newPlaceText}
                       onChangeText={setNewPlaceText}
                       placeholder="Search or add place..."
                       placeholderTextColor={theme.colors.textTertiary}
-                      autoFocus={true}
                       returnKeyType="done"
                       onSubmitEditing={() => {
                         if (canAdd) {
@@ -749,6 +777,28 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               placeholderTextColor={theme.colors.textTertiary}
               keyboardType="phone-pad"
             />
+          </View>
+
+          {/* Options */}
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setSimchaInitiative(!simchaInitiative)}
+            >
+              <View style={[styles.checkbox, simchaInitiative && styles.checkboxChecked]}>
+                {simchaInitiative && <Text style={styles.checkboxCheck}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Simcha Initiative</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setProjector(!projector)}
+            >
+              <View style={[styles.checkbox, projector && styles.checkboxChecked]}>
+                {projector && <Text style={styles.checkboxCheck}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Projector</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Notes */}
@@ -1104,5 +1154,45 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 100,
     paddingTop: theme.spacing.sm,
+  },
+
+  // Place clear button
+  placeComboRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  placeComboFlex: {
+    flex: 1,
+  },
+
+  // Checkboxes
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.sm,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  checkboxCheck: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: theme.fontWeight.bold,
+  },
+  checkboxLabel: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
   },
 });

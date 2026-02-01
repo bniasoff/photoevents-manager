@@ -25,6 +25,8 @@ const mapSupabaseToEvent = (row: any): Event => {
     Sent: row.sent || false,
     Info: row.info || '',
     ToDo: row.todo || '',
+    SimchaInitiative: row.simcha_initiative || false,
+    Projector: row.projector || false,
     Referral: row.referral || null,
     CreatedDate: row.created_date || '',
     EtagID: row.etag_id || '',
@@ -55,6 +57,8 @@ const mapEventToSupabase = (updates: Partial<Event>): any => {
   if (updates.Sent !== undefined) supabaseUpdates.sent = updates.Sent === 'True' || updates.Sent === true;
   if (updates.Info !== undefined) supabaseUpdates.info = updates.Info;
   if (updates.ToDo !== undefined) supabaseUpdates.todo = updates.ToDo;
+  if (updates.SimchaInitiative !== undefined) supabaseUpdates.simcha_initiative = updates.SimchaInitiative;
+  if (updates.Projector !== undefined) supabaseUpdates.projector = updates.Projector;
   if (updates.Referral !== undefined) supabaseUpdates.referral = updates.Referral;
 
   return supabaseUpdates;

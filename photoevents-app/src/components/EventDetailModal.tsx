@@ -118,6 +118,41 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
+  const handleExportToGoogleCalendar = () => {
+    const dateStr = localEvent.EventDate.slice(0, 10).replace(/-/g, '');
+
+    let dates: string;
+    if (localEvent.Start) {
+      const startTime = localEvent.Start.replace(/:/g, '').slice(0, 6);
+      let endTime: string;
+      if (localEvent.End) {
+        endTime = localEvent.End.replace(/:/g, '').slice(0, 6);
+      } else {
+        const [sh, sm, ss] = localEvent.Start.split(':');
+        const endH = (parseInt(sh, 10) + 1).toString().padStart(2, '0');
+        endTime = `${endH}${sm}${ss || '00'}`;
+      }
+      dates = `${dateStr}T${startTime}/${dateStr}T${endTime}`;
+    } else {
+      const nextDay = new Date(new Date(localEvent.EventDate).getTime() + 86400000);
+      const nextDayStr = nextDay.toISOString().slice(0, 10).replace(/-/g, '');
+      dates = `${dateStr}/${nextDayStr}`;
+    }
+
+    let url = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(localEvent.Name)}&dates=${dates}`;
+
+    if (localEvent.Place || localEvent.Address) {
+      let location = localEvent.Place || '';
+      if (localEvent.Address) location += (location ? ', ' : '') + localEvent.Address;
+      url += `&location=${encodeURIComponent(location)}`;
+    }
+    if (localEvent.Info) {
+      url += `&details=${encodeURIComponent(localEvent.Info)}`;
+    }
+
+    Linking.openURL(url);
+  };
+
   const handleFinancialUpdate = async () => {
     const previousEvent = { ...localEvent };
     const newCharge = parseFloat(chargeText) || 0;
@@ -401,6 +436,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             </View>
           )}
 
+          {/* Export to Google Calendar */}
+          <View style={styles.section}>
+            <TouchableOpacity style={styles.googleCalendarBtn} onPress={handleExportToGoogleCalendar}>
+              <Text style={styles.googleCalendarBtnText}>📅  Export to Google Calendar</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Saving Indicator */}
           {isSaving && (
             <View style={styles.savingContainer}>
@@ -625,5 +667,18 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
     fontWeight: theme.fontWeight.medium,
     flex: 1,
+  },
+  googleCalendarBtn: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  googleCalendarBtnText: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.primary,
   },
 });
