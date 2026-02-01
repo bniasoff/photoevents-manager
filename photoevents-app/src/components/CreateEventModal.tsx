@@ -43,6 +43,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [notes, setNotes] = useState('');
   const [simchaInitiative, setSimchaInitiative] = useState(false);
   const [projector, setProjector] = useState(false);
+  const [wineman, setWineman] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
@@ -338,6 +339,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         Info: notes.trim(),
         SimchaInitiative: simchaInitiative,
         Projector: projector,
+        Wineman: wineman,
         Charge: 0,
         Payment: 0,
         Paid: false,
@@ -370,6 +372,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setNotes('');
     setSimchaInitiative(false);
     setProjector(false);
+    setWineman(false);
   };
 
   const displayDate = (() => {
@@ -798,6 +801,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 {projector && <Text style={styles.checkboxCheck}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>Projector</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setWineman(!wineman)}
+            >
+              <View style={[styles.checkbox, wineman && styles.checkboxChecked]}>
+                {wineman && <Text style={styles.checkboxCheck}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Wineman</Text>
             </TouchableOpacity>
           </View>
 

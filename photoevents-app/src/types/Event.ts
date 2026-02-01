@@ -20,6 +20,7 @@ export interface Event {
   Category: string;
   SimchaInitiative?: boolean;
   Projector?: boolean;
+  Wineman?: boolean;
   Referral?: string | null;
   CreatedDate?: string;
   EtagID?: string;
