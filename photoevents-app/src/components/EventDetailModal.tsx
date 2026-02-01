@@ -47,8 +47,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   React.useEffect(() => {
     setLocalEvent(event);
     if (event) {
-      setChargeText(parseAmount(event.Charge).toFixed(2));
-      setPaymentText(parseAmount(event.Payment).toFixed(2));
+      setChargeText(Math.round(parseAmount(event.Charge)).toString());
+      setPaymentText(Math.round(parseAmount(event.Payment)).toString());
     }
   }, [event]);
 
@@ -158,8 +158,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
       onUpdate(updatedEvent);
       setLocalEvent(updatedEvent);
-      setChargeText(parseAmount(updatedEvent.Charge).toFixed(2));
-      setPaymentText(parseAmount(updatedEvent.Payment).toFixed(2));
+      setChargeText(Math.round(parseAmount(updatedEvent.Charge)).toString());
+      setPaymentText(Math.round(parseAmount(updatedEvent.Payment)).toString());
 
       console.log('=== PAYMENT UPDATE COMPLETE ===');
       // Silent success - field update is enough feedback
@@ -167,8 +167,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       // Revert on error
       console.error('Error updating financials:', error);
       setLocalEvent(previousEvent);
-      setChargeText(parseAmount(previousEvent.Charge).toFixed(2));
-      setPaymentText(parseAmount(previousEvent.Payment).toFixed(2));
+      setChargeText(Math.round(parseAmount(previousEvent.Charge)).toString());
+      setPaymentText(Math.round(parseAmount(previousEvent.Payment)).toString());
       Alert.alert(
         'Error',
         'Failed to update payment information. Please try again.',
@@ -281,8 +281,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   <TouchableOpacity
                     onPress={() => {
                       setIsEditingFinancials(false);
-                      setChargeText(parseAmount(localEvent.Charge).toFixed(2));
-                      setPaymentText(parseAmount(localEvent.Payment).toFixed(2));
+                      setChargeText(Math.round(parseAmount(localEvent.Charge)).toString());
+                      setPaymentText(Math.round(parseAmount(localEvent.Payment)).toString());
                     }}
                     disabled={isSaving}
                   >
@@ -307,8 +307,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                     style={styles.input}
                     value={chargeText}
                     onChangeText={setChargeText}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
+                    keyboardType="number-pad"
+                    placeholder="0"
                     placeholderTextColor={theme.colors.textTertiary}
                   />
                 </View>
@@ -318,8 +318,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                     style={styles.input}
                     value={paymentText}
                     onChangeText={setPaymentText}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
+                    keyboardType="number-pad"
+                    placeholder="0"
                     placeholderTextColor={theme.colors.textTertiary}
                   />
                 </View>
@@ -328,11 +328,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <>
                 <View style={styles.financialRow}>
                   <Text style={styles.infoText}>Charge:</Text>
-                  <Text style={styles.amount}>${charge.toFixed(2)}</Text>
+                  <Text style={styles.amount}>${Math.round(charge)}</Text>
                 </View>
                 <View style={styles.financialRow}>
                   <Text style={styles.infoText}>Paid:</Text>
-                  <Text style={styles.amount}>${payment.toFixed(2)}</Text>
+                  <Text style={styles.amount}>${Math.round(payment)}</Text>
                 </View>
               </>
             )}
@@ -341,7 +341,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <View style={styles.financialRow}>
                 <Text style={styles.infoText}>Balance:</Text>
                 <Text style={[styles.amount, styles.balanceText]}>
-                  ${balance.toFixed(2)}
+                  ${Math.round(balance)}
                 </Text>
               </View>
             )}

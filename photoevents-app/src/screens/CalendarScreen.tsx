@@ -14,6 +14,7 @@ import { EventCard } from '../components/EventCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { EventDetailModal } from '../components/EventDetailModal';
+import { CreateEventModal } from '../components/CreateEventModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
@@ -29,6 +30,7 @@ export const CalendarScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [markedDates, setMarkedDates] = useState<any>({});
 
   const loadEvents = async () => {
@@ -119,6 +121,10 @@ export const CalendarScreen: React.FC = () => {
     updateEventsForDate(selectedDate, events.map((event) =>
       getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
     ));
+  };
+
+  const handleEventCreated = () => {
+    loadEvents();
   };
 
   if (isLoading) {
@@ -225,6 +231,22 @@ export const CalendarScreen: React.FC = () => {
         onClose={handleCloseModal}
         onUpdate={handleEventUpdate}
       />
+
+      {/* Create Event Modal */}
+      <CreateEventModal
+        visible={isCreateModalVisible}
+        selectedDate={selectedDate}
+        onClose={() => setIsCreateModalVisible(false)}
+        onEventCreated={handleEventCreated}
+      />
+
+      {/* FAB - Add New Event */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setIsCreateModalVisible(true)}
+      >
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -296,5 +318,23 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: theme.spacing.xl,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 28,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.medium,
+  },
+  fabIcon: {
+    fontSize: 30,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.bold,
+    lineHeight: 34,
   },
 });

@@ -128,6 +128,57 @@ export const updateEvent = async (
 };
 
 /**
+ * Create a new event in Supabase
+ */
+export const createEvent = async (eventData: Partial<Event>): Promise<Event> => {
+  try {
+    const supabaseData = mapEventToSupabase(eventData);
+
+    const { data, error } = await supabase
+      .from('events')
+      .insert(supabaseData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase create error:', error);
+      throw error;
+    }
+
+    return mapSupabaseToEvent(data);
+  } catch (error) {
+    console.error('Error creating event:', error);
+    throw new Error('Failed to create event. Please try again.');
+  }
+};
+
+/**
+ * Fetch all distinct places with their addresses from Supabase
+ * Returns a map of place name -> address
+ */
+export const fetchPlaces = async (): Promise<Record<string, string>> => {
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('place, address')
+      .order('place');
+
+    if (error) throw error;
+
+    const map: Record<string, string> = {};
+    (data || []).forEach((r: any) => {
+      const p = (r.place || '').trim();
+      const a = (r.address || '').trim();
+      if (p && map[p] === undefined) map[p] = a;
+    });
+    return map;
+  } catch (error) {
+    console.error('Error fetching places:', error);
+    return {};
+  }
+};
+
+/**
  * Update event status fields (Paid, Ready, Sent) and financial fields (Charge, Payment)
  */
 export const updateEventStatus = async (
