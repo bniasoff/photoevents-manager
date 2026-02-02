@@ -294,7 +294,7 @@ export const CalendarScreen: React.FC = () => {
         {/* Selected Date Header */}
         <View style={styles.dateHeader}>
           <Text style={styles.dateHeaderText}>
-            {format(new Date(selectedDate), 'EEEE, MMMM d, yyyy')}
+            {format(new Date(selectedDate + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
           </Text>
           <View style={styles.eventCount}>
             <Text style={styles.eventCountText}>
