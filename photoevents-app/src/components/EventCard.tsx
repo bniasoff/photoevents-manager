@@ -12,9 +12,10 @@ import { formatEventDateTime } from '../utils/dateHelpers';
 interface EventCardProps {
   event: Event;
   onPress?: () => void;
+  onLongPress?: (event: Event) => void;
 }
 
-export const EventCard: React.FC<EventCardProps> = ({ event, onPress }) => {
+export const EventCard: React.FC<EventCardProps> = ({ event, onPress, onLongPress }) => {
   const status = getEventStatus(event);
   const icon = getCategoryIcon(event.Category);
 
@@ -26,6 +27,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress }) => {
     <TouchableOpacity
       style={styles.card}
       onPress={onPress}
+      onLongPress={() => onLongPress?.(event)}
       activeOpacity={0.7}
     >
       {/* Header Row */}

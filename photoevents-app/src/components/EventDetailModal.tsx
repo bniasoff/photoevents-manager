@@ -23,13 +23,14 @@ import {
   getEventId,
 } from '../utils/eventHelpers';
 import { formatEventDateTime, formatTime } from '../utils/dateHelpers';
-import { updateEventStatus } from '../services/api';
+import { updateEventStatus, updateEvent, deleteEvent } from '../services/api';
 
 interface EventDetailModalProps {
   event: Event | null;
   visible: boolean;
   onClose: () => void;
   onUpdate: (updatedEvent: Event) => void;
+  onDelete: (eventId: string) => void;
 }
 
 export const EventDetailModal: React.FC<EventDetailModalProps> = ({
@@ -37,18 +38,81 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   visible,
   onClose,
   onUpdate,
+  onDelete,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [localEvent, setLocalEvent] = useState<Event | null>(event);
   const [chargeText, setChargeText] = useState('');
   const [paymentText, setPaymentText] = useState('');
-  const [isEditingFinancials, setIsEditingFinancials] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Edit mode state fields
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editPlace, setEditPlace] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editInfo, setEditInfo] = useState('');
+  const [editReferral, setEditReferral] = useState('');
+  const [editEventDate, setEditEventDate] = useState('');
+  const [editSimchaInitiative, setEditSimchaInitiative] = useState(false);
+  const [editProjector, setEditProjector] = useState(false);
+  const [editWineman, setEditWineman] = useState(false);
+  const [editStartHour, setEditStartHour] = useState('');
+  const [editStartMin, setEditStartMin] = useState('');
+  const [editStartPeriod, setEditStartPeriod] = useState<'AM' | 'PM'>('AM');
+  const [editEndHour, setEditEndHour] = useState('');
+  const [editEndMin, setEditEndMin] = useState('');
+  const [editEndPeriod, setEditEndPeriod] = useState<'AM' | 'PM'>('PM');
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const [isPlaceOpen, setIsPlaceOpen] = useState(false);
 
   React.useEffect(() => {
     setLocalEvent(event);
     if (event) {
       setChargeText(Math.round(parseAmount(event.Charge)).toString());
       setPaymentText(Math.round(parseAmount(event.Payment)).toString());
+
+      // Initialize edit fields
+      setEditName(event.Name || '');
+      setEditCategory(event.Category || '');
+      setEditPlace(event.Place || '');
+      setEditAddress(event.Address || '');
+      setEditPhone(event.Phone || '');
+      setEditInfo(event.Info || '');
+      setEditReferral(event.Referral || '');
+      setEditEventDate(event.EventDate ? event.EventDate.slice(0, 10) : '');
+      setEditSimchaInitiative(event.SimchaInitiative || false);
+      setEditProjector(event.Projector || false);
+      setEditWineman(event.Wineman || false);
+
+      // Parse Start time
+      if (event.Start) {
+        const [hour, min] = event.Start.split(':');
+        const h = parseInt(hour);
+        const isPM = h >= 12;
+        setEditStartHour((h % 12 || 12).toString());
+        setEditStartMin(min);
+        setEditStartPeriod(isPM ? 'PM' : 'AM');
+      } else {
+        setEditStartHour('');
+        setEditStartMin('');
+        setEditStartPeriod('AM');
+      }
+
+      // Parse End time
+      if (event.End) {
+        const [hour, min] = event.End.split(':');
+        const h = parseInt(hour);
+        const isPM = h >= 12;
+        setEditEndHour((h % 12 || 12).toString());
+        setEditEndMin(min);
+        setEditEndPeriod(isPM ? 'PM' : 'AM');
+      } else {
+        setEditEndHour('');
+        setEditEndMin('');
+        setEditEndPeriod('PM');
+      }
     }
   }, [event]);
 
@@ -172,7 +236,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       Payment: newPayment,
     };
     setLocalEvent(optimisticEvent);
-    setIsEditingFinancials(false);
+    setIsEditing(false);
 
     try {
       setIsSaving(true);
@@ -215,6 +279,158 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
+  const handleDelete = () => {
+    if (!localEvent) return;
+
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${localEvent.Name}"? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsSaving(true);
+              await deleteEvent(getEventId(localEvent));
+              onDelete(getEventId(localEvent));
+              onClose();
+            } catch (error) {
+              Alert.alert(
+                'Error',
+                'Failed to delete event. Please try again.',
+                [{ text: 'OK' }]
+              );
+              console.error('Error deleting event:', error);
+            } finally {
+              setIsSaving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    if (localEvent) {
+      // Reset all edit fields to current values
+      setEditName(localEvent.Name || '');
+      setEditCategory(localEvent.Category || '');
+      setEditPlace(localEvent.Place || '');
+      setEditAddress(localEvent.Address || '');
+      setEditPhone(localEvent.Phone || '');
+      setEditInfo(localEvent.Info || '');
+      setEditReferral(localEvent.Referral || '');
+      setEditEventDate(localEvent.EventDate ? localEvent.EventDate.slice(0, 10) : '');
+      setEditSimchaInitiative(localEvent.SimchaInitiative || false);
+      setEditProjector(localEvent.Projector || false);
+      setEditWineman(localEvent.Wineman || false);
+      setChargeText(Math.round(parseAmount(localEvent.Charge)).toString());
+      setPaymentText(Math.round(parseAmount(localEvent.Payment)).toString());
+
+      // Reset time fields
+      if (localEvent.Start) {
+        const [hour, min] = localEvent.Start.split(':');
+        const h = parseInt(hour);
+        const isPM = h >= 12;
+        setEditStartHour((h % 12 || 12).toString());
+        setEditStartMin(min);
+        setEditStartPeriod(isPM ? 'PM' : 'AM');
+      }
+      if (localEvent.End) {
+        const [hour, min] = localEvent.End.split(':');
+        const h = parseInt(hour);
+        const isPM = h >= 12;
+        setEditEndHour((h % 12 || 12).toString());
+        setEditEndMin(min);
+        setEditEndPeriod(isPM ? 'PM' : 'AM');
+      }
+    }
+  };
+
+  const handleFullEdit = async () => {
+    if (!localEvent) return;
+
+    const previousEvent = { ...localEvent };
+
+    // Convert time to 24-hour format
+    const to24Hour = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
+      let h = parseInt(hour) || 0;
+      const m = parseInt(minute) || 0;
+      if (period === 'PM' && h !== 12) h += 12;
+      if (period === 'AM' && h === 12) h = 0;
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00`;
+    };
+
+    const startTime = editStartHour ? to24Hour(editStartHour, editStartMin, editStartPeriod) : '';
+    const endTime = editEndHour ? to24Hour(editEndHour, editEndMin, editEndPeriod) : '';
+
+    // Optimistic update
+    const optimisticEvent = {
+      ...localEvent,
+      Name: editName.trim(),
+      Category: editCategory,
+      Place: editPlace.trim(),
+      Address: editAddress.trim(),
+      Phone: editPhone.trim(),
+      Info: editInfo.trim(),
+      Referral: editReferral.trim() || null,
+      EventDate: editEventDate,
+      SimchaInitiative: editSimchaInitiative,
+      Projector: editProjector,
+      Wineman: editWineman,
+      Start: startTime,
+      End: endTime,
+      Charge: parseFloat(chargeText) || 0,
+      Payment: parseFloat(paymentText) || 0,
+    };
+
+    setLocalEvent(optimisticEvent);
+    setIsEditing(false);
+
+    try {
+      setIsSaving(true);
+
+      const updates = {
+        Name: editName.trim(),
+        Category: editCategory,
+        Place: editPlace.trim(),
+        Address: editAddress.trim(),
+        Phone: editPhone.trim(),
+        Info: editInfo.trim(),
+        Referral: editReferral.trim() || null,
+        EventDate: editEventDate,
+        SimchaInitiative: editSimchaInitiative,
+        Projector: editProjector,
+        Wineman: editWineman,
+        Start: startTime,
+        End: endTime,
+        Charge: parseFloat(chargeText) || 0,
+        Payment: parseFloat(paymentText) || 0,
+      };
+
+      const updatedEvent = await updateEvent(getEventId(localEvent), updates);
+      onUpdate(updatedEvent);
+      setLocalEvent(updatedEvent);
+    } catch (error) {
+      // Revert on error
+      setLocalEvent(previousEvent);
+      Alert.alert(
+        'Error',
+        'Failed to update event. Please try again.',
+        [{ text: 'OK' }]
+      );
+      console.error('Error updating event:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -238,11 +454,33 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         <ScrollView style={styles.content}>
           {/* Icon & Name */}
           <View style={styles.section}>
-            <View style={styles.nameRow}>
-              <Text style={styles.icon}>{icon}</Text>
-              <Text style={styles.name}>{localEvent.Name}</Text>
-            </View>
-            <Text style={styles.category}>{localEvent.Category}</Text>
+            {isEditing ? (
+              <>
+                <TextInput
+                  style={[styles.input, styles.nameInput]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Event name"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editEventDate}
+                  onChangeText={setEditEventDate}
+                  placeholder="2026-02-01"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.nameRow}>
+                  <Text style={styles.icon}>{icon}</Text>
+                  <Text style={styles.name}>{localEvent.Name}</Text>
+                </View>
+                <Text style={styles.category}>{localEvent.Category}</Text>
+              </>
+            )}
           </View>
 
           {/* Status Toggles */}
@@ -304,9 +542,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Payment</Text>
-              {!isEditingFinancials ? (
+              {!isEditing ? (
                 <TouchableOpacity
-                  onPress={() => setIsEditingFinancials(true)}
+                  onPress={() => setIsEditing(true)}
                   disabled={isSaving}
                 >
                   <Text style={styles.editButton}>Edit</Text>
@@ -314,17 +552,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               ) : (
                 <View style={styles.editActions}>
                   <TouchableOpacity
-                    onPress={() => {
-                      setIsEditingFinancials(false);
-                      setChargeText(Math.round(parseAmount(localEvent.Charge)).toString());
-                      setPaymentText(Math.round(parseAmount(localEvent.Payment)).toString());
-                    }}
+                    onPress={handleCancelEdit}
                     disabled={isSaving}
                   >
                     <Text style={styles.cancelButton}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={handleFinancialUpdate}
+                    onPress={handleFullEdit}
                     disabled={isSaving}
                     style={styles.saveButtonContainer}
                   >
@@ -334,7 +568,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               )}
             </View>
 
-            {isEditingFinancials ? (
+            {isEditing ? (
               <>
                 <View style={styles.inputRow}>
                   <Text style={styles.inputLabel}>Charge:</Text>
@@ -372,7 +606,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               </>
             )}
 
-            {balance > 0 && !isEditingFinancials && (
+            {balance > 0 && !isEditing && (
               <View style={styles.financialRow}>
                 <Text style={styles.infoText}>Balance:</Text>
                 <Text style={[styles.amount, styles.balanceText]}>
@@ -450,6 +684,17 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <Text style={styles.savingText}>Saving changes...</Text>
             </View>
           )}
+
+          {/* Delete Button */}
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDelete}
+              disabled={isSaving}
+            >
+              <Text style={styles.deleteButtonText}>Delete Event</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.bottomPadding} />
         </ScrollView>
@@ -649,6 +894,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
+  nameInput: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    textAlign: 'left',
+    marginLeft: 0,
+    marginBottom: theme.spacing.md,
+  },
   compactTogglesContainer: {
     gap: 0,
   },
@@ -680,5 +932,17 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.primary,
+  },
+  deleteButton: {
+    backgroundColor: '#ef4444',
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+    marginTop: theme.spacing.lg,
+  },
+  deleteButtonText: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: '#FFFFFF',
   },
 });

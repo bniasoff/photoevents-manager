@@ -229,3 +229,25 @@ export const updateEventStatus = async (
 
   return updateEvent(eventId, updates);
 };
+
+export const deleteEvent = async (eventId: string): Promise<void> => {
+  try {
+    console.log('=== DELETE EVENT ===');
+    console.log('Event ID:', eventId);
+
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId);
+
+    if (error) {
+      console.error('Supabase delete error:', error);
+      throw error;
+    }
+
+    console.log('Event deleted successfully');
+  } catch (error) {
+    console.error('Error deleting event:', error);
+    throw new Error('Failed to delete event. Please try again.');
+  }
+};

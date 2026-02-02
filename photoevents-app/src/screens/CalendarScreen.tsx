@@ -16,7 +16,8 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { CreateEventModal } from '../components/CreateEventModal';
-import { fetchEvents } from '../services/api';
+import { EventActionMenu } from '../components/EventActionMenu';
+import { fetchEvents, deleteEvent, updateEvent } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
 import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
@@ -100,6 +101,10 @@ export const CalendarScreen: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [markedDates, setMarkedDates] = useState<any>({});
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [actionMenuEvent, setActionMenuEvent] = useState<Event | null>(null);
+  const [isMovingEvent, setIsMovingEvent] = useState(false);
+  const [eventToMove, setEventToMove] = useState<Event | null>(null);
 
   const loadEvents = async () => {
     try {
@@ -112,7 +117,9 @@ export const CalendarScreen: React.FC = () => {
       const marks: any = {};
       sorted.forEach((event) => {
         try {
-          const date = format(parseISO(event.EventDate), 'yyyy-MM-dd');
+          // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
+          const dateStr = event.EventDate.slice(0, 10);
+          const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
           if (!marks[date]) {
             marks[date] = {
               customStyles: {
@@ -148,7 +155,9 @@ export const CalendarScreen: React.FC = () => {
   const updateEventsForDate = (date: string, eventsList: Event[]) => {
     const eventsForDate = eventsList.filter((event) => {
       try {
-        const eventDate = format(parseISO(event.EventDate), 'yyyy-MM-dd');
+        // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
+        const dateStr = event.EventDate.slice(0, 10);
+        const eventDate = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
         return eventDate === date;
       } catch {
         return false;
@@ -167,8 +176,14 @@ export const CalendarScreen: React.FC = () => {
   };
 
   const handleDayPress = (day: DateData) => {
-    setSelectedDate(day.dateString);
-    updateEventsForDate(day.dateString, events);
+    if (isMovingEvent) {
+      // In move mode - move the event to this date
+      handleMoveToDate(day.dateString);
+    } else {
+      // Normal mode - select date
+      setSelectedDate(day.dateString);
+      updateEventsForDate(day.dateString, events);
+    }
   };
 
   const handleTodayPress = () => {
@@ -201,6 +216,123 @@ export const CalendarScreen: React.FC = () => {
 
   const handleEventCreated = () => {
     loadEvents();
+  };
+
+  const handleEventLongPress = (event: Event) => {
+    setActionMenuEvent(event);
+    setActionMenuVisible(true);
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!actionMenuEvent) return;
+
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${actionMenuEvent.Name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEvent(getEventId(actionMenuEvent));
+
+              // Remove from events array
+              const updatedEvents = events.filter(
+                (e) => getEventId(e) !== getEventId(actionMenuEvent)
+              );
+              setEvents(updatedEvents);
+              updateEventsForDate(selectedDate, updatedEvents);
+
+              // Close menu
+              setActionMenuVisible(false);
+              setActionMenuEvent(null);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete event.');
+              console.error('Error deleting event:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleStartChangeDate = () => {
+    setEventToMove(actionMenuEvent);
+    setIsMovingEvent(true);
+    setActionMenuVisible(false);
+    setActionMenuEvent(null);
+  };
+
+  const handleCancelMove = () => {
+    setIsMovingEvent(false);
+    setEventToMove(null);
+  };
+
+  const handleMoveToDate = async (newDateString: string) => {
+    if (!eventToMove) return;
+
+    try {
+      console.log('Moving event to date:', newDateString);
+      console.log('Old event date:', eventToMove.EventDate);
+
+      // Update event with new date - add time component to prevent timezone shift
+      // Save as noon local time to ensure it stays on the correct day
+      const updates = {
+        EventDate: newDateString + 'T12:00:00',
+      };
+
+      await updateEvent(getEventId(eventToMove), updates);
+
+      // Reload all events from database to ensure we have fresh data
+      const data = await fetchEvents();
+      const sorted = sortEventsByDate(data);
+      setEvents(sorted);
+
+      // Rebuild marked dates with fresh events
+      const marks: any = {};
+      sorted.forEach((event) => {
+        try {
+          // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
+          const dateStr = event.EventDate.slice(0, 10);
+          const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
+          if (!marks[date]) {
+            marks[date] = {
+              customStyles: {
+                container: {
+                  backgroundColor: theme.colors.purple,
+                  borderRadius: 18,
+                },
+                text: {
+                  color: '#FFFFFF',
+                  fontWeight: 'bold',
+                },
+              },
+              events: [],
+            };
+          }
+          marks[date].events.push(event);
+        } catch (err) {
+          console.error('Error parsing date:', err);
+        }
+      });
+      setMarkedDates(marks);
+
+      // Change selected date to the new date and update displayed events
+      setSelectedDate(newDateString);
+      updateEventsForDate(newDateString, sorted);
+
+      // Exit move mode
+      setIsMovingEvent(false);
+      setEventToMove(null);
+
+      // Show success feedback
+      Alert.alert('Success', `Event moved to ${format(parseISO(newDateString), 'MMM d, yyyy')}`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to move event.');
+      console.error('Error moving event:', error);
+    }
   };
 
   const handleExport = async () => {
@@ -304,6 +436,18 @@ export const CalendarScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Move Mode Banner */}
+        {isMovingEvent && eventToMove && (
+          <View style={styles.moveBanner}>
+            <Text style={styles.moveBannerText}>
+              📅 Moving "{eventToMove.Name}" - Tap a date to move
+            </Text>
+            <TouchableOpacity onPress={handleCancelMove}>
+              <Text style={styles.moveBannerCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Events List */}
         {eventsOnSelectedDate.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -317,6 +461,7 @@ export const CalendarScreen: React.FC = () => {
                 key={getEventId(event)}
                 event={event}
                 onPress={() => handleEventPress(event)}
+                onLongPress={handleEventLongPress}
               />
             ))}
           </View>
@@ -339,6 +484,18 @@ export const CalendarScreen: React.FC = () => {
         selectedDate={selectedDate}
         onClose={() => setIsCreateModalVisible(false)}
         onEventCreated={handleEventCreated}
+      />
+
+      {/* Event Action Menu */}
+      <EventActionMenu
+        visible={actionMenuVisible}
+        event={actionMenuEvent}
+        onClose={() => {
+          setActionMenuVisible(false);
+          setActionMenuEvent(null);
+        }}
+        onDelete={handleDeleteEvent}
+        onChangeDate={handleStartChangeDate}
       />
 
       {/* FAB - Add New Event */}
@@ -460,5 +617,27 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
     fontWeight: theme.fontWeight.bold,
     lineHeight: 34,
+  },
+  moveBanner: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+  },
+  moveBannerText: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  moveBannerCancel: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: '#FFFFFF',
+    paddingHorizontal: theme.spacing.md,
   },
 });

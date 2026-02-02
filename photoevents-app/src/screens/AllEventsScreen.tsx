@@ -107,6 +107,13 @@ export const AllEventsScreen: React.FC = () => {
     );
   };
 
+  const handleEventDelete = (eventId: string) => {
+    // Remove event from local state
+    setEvents((prevEvents) =>
+      prevEvents.filter((event) => getEventId(event) !== eventId)
+    );
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading events..." />;
   }
@@ -213,6 +220,7 @@ export const AllEventsScreen: React.FC = () => {
         visible={isModalVisible}
         onClose={handleCloseModal}
         onUpdate={handleEventUpdate}
+        onDelete={handleEventDelete}
       />
     </View>
   );
