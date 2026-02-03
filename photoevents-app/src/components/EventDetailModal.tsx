@@ -125,7 +125,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const balance = charge - payment;
 
   const handleStatusToggle = async (
-    field: 'Paid' | 'Ready' | 'Sent',
+    field: 'Paid' | 'Ready' | 'Sent' | 'SimchaInitiative' | 'Projector' | 'Wineman',
     newValue: boolean
   ) => {
     const previousEvent = { ...localEvent };
@@ -137,9 +137,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     console.log('New value:', newValue);
 
     // Optimistic update
+    // Handle both string fields (Paid/Ready/Sent) and boolean fields (SimchaInitiative/Projector/Wineman)
+    const fieldValue = ['SimchaInitiative', 'Projector', 'Wineman'].includes(field)
+      ? newValue
+      : newValue ? 'True' : '';
     const optimisticEvent = {
       ...localEvent,
-      [field]: newValue ? 'True' : '',
+      [field]: fieldValue,
     };
     setLocalEvent(optimisticEvent);
 
@@ -652,6 +656,54 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}
               </Text>
             )}
+
+            {/* Separator */}
+            <View style={styles.separator} />
+
+            {/* Event Options */}
+            <View style={styles.eventOptionsContainer}>
+              <View style={styles.eventOption}>
+                <Text style={styles.eventOptionText}>Simcha Initiative</Text>
+                <Switch
+                  value={localEvent.SimchaInitiative || false}
+                  onValueChange={(value) => handleStatusToggle('SimchaInitiative', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when false
+                    true: '#22c55e', // Green when true
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
+
+              <View style={styles.eventOption}>
+                <Text style={styles.eventOptionText}>Projector</Text>
+                <Switch
+                  value={localEvent.Projector || false}
+                  onValueChange={(value) => handleStatusToggle('Projector', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when false
+                    true: '#22c55e', // Green when true
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
+
+              <View style={styles.eventOption}>
+                <Text style={styles.eventOptionText}>Wineman</Text>
+                <Switch
+                  value={localEvent.Wineman || false}
+                  onValueChange={(value) => handleStatusToggle('Wineman', value)}
+                  disabled={isSaving}
+                  trackColor={{
+                    false: '#ef4444', // Red when false
+                    true: '#22c55e', // Green when true
+                  }}
+                  thumbColor={theme.colors.textPrimary}
+                />
+              </View>
+            </View>
           </View>
 
           {/* Additional Info */}
@@ -920,6 +972,21 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.medium,
     flex: 1,
   },
+  eventOptionsContainer: {
+    marginTop: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  eventOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing.xs,
+  },
+  eventOptionText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.medium,
+  },
   googleCalendarBtn: {
     backgroundColor: theme.colors.cardBackground,
     borderRadius: theme.borderRadius.md,
@@ -944,5 +1011,11 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.bold,
     color: '#FFFFFF',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: theme.colors.divider,
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   },
 });

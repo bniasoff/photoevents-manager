@@ -32,7 +32,9 @@ export const formatTime = (timeString: string): string => {
  */
 export const formatEventDateTime = (event: Event): string => {
   try {
-    const date = parseISO(event.EventDate);
+    // Extract date and add noon time to avoid timezone issues
+    const dateOnly = event.EventDate.slice(0, 10);
+    const date = parseISO(dateOnly + 'T12:00:00');
     const dateStr = format(date, 'MMM d, yyyy');
 
     if (event.Start) {
@@ -56,7 +58,9 @@ export const formatEventDateTime = (event: Event): string => {
  */
 export const formatEventDate = (dateString: string): string => {
   try {
-    const date = parseISO(dateString);
+    // Extract date and add noon time to avoid timezone issues
+    const dateOnly = dateString.slice(0, 10);
+    const date = parseISO(dateOnly + 'T12:00:00');
     return format(date, 'MMM d, yyyy');
   } catch (error) {
     return 'Invalid date';
@@ -106,14 +110,18 @@ export const getDateRange = (groupKey: DateGroupKey): { start: Date; end: Date }
 };
 
 /**
- * Determine which date group an event belongs to
+ * Determine which date groups an event belongs to (can be multiple)
  */
-export const getEventDateGroup = (event: Event): DateGroupKey | null => {
+export const getEventDateGroups = (event: Event): DateGroupKey[] => {
   try {
-    const eventDate = parseISO(event.EventDate);
+    // Extract date and add noon time to avoid timezone issues
+    const dateStr = event.EventDate.slice(0, 10);
+    const eventDate = parseISO(dateStr + 'T12:00:00');
     const now = new Date();
 
-    // Check each group in order
+    const matchingGroups: DateGroupKey[] = [];
+
+    // Check all groups
     const groups: DateGroupKey[] = [
       'lastWeek',
       'thisWeek',
@@ -126,24 +134,24 @@ export const getEventDateGroup = (event: Event): DateGroupKey | null => {
     for (const groupKey of groups) {
       const range = getDateRange(groupKey);
       if (range && isWithinInterval(eventDate, range)) {
-        return groupKey;
+        matchingGroups.push(groupKey);
       }
     }
 
-    // If after next month, it's a future event
-    const nextMonthEnd = endOfMonth(addMonths(now, 1));
-    if (eventDate > nextMonthEnd) {
-      return 'future';
+    // All events after today are future events
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (eventDate > startOfToday) {
+      matchingGroups.push('future');
     }
 
-    return null; // Event is in the past (before last week)
+    return matchingGroups;
   } catch (error) {
-    return null;
+    return [];
   }
 };
 
 /**
- * Group events by date ranges
+ * Group events by date ranges (events can appear in multiple groups)
  */
 export const groupEventsByDate = (
   events: Event[]
@@ -159,10 +167,10 @@ export const groupEventsByDate = (
   };
 
   events.forEach((event) => {
-    const group = getEventDateGroup(event);
-    if (group) {
-      groups[group].push(event);
-    }
+    const matchingGroups = getEventDateGroups(event);
+    matchingGroups.forEach((groupKey) => {
+      groups[groupKey].push(event);
+    });
   });
 
   return groups;

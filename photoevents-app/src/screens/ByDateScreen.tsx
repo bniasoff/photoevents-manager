@@ -6,6 +6,7 @@ import {
   RefreshControl,
   Text,
 } from 'react-native';
+import { format } from 'date-fns';
 import { Event, DateGroupKey } from '../types/Event';
 import { EventCard } from '../components/EventCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -82,6 +83,14 @@ export const ByDateScreen: React.FC = () => {
     setGroupedEvents(grouped);
   };
 
+  const getTodaysEvents = (): Event[] => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    return events.filter((event) => {
+      const eventDate = event.EventDate.slice(0, 10);
+      return eventDate === today;
+    });
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading events..." />;
   }
@@ -90,6 +99,7 @@ export const ByDateScreen: React.FC = () => {
     return <ErrorMessage message={error} onRetry={loadEvents} />;
   }
 
+  const todaysEvents = getTodaysEvents();
   const dateGroups: DateGroupKey[] = [
     'thisWeek',
     'nextWeek',
@@ -100,7 +110,7 @@ export const ByDateScreen: React.FC = () => {
     'future',
   ];
 
-  const totalEvents = Object.values(groupedEvents).reduce(
+  const totalEvents = todaysEvents.length + Object.values(groupedEvents).reduce(
     (sum, group) => sum + group.length,
     0
   );
@@ -123,6 +133,23 @@ export const ByDateScreen: React.FC = () => {
           {totalEvents} event{totalEvents !== 1 ? 's' : ''} total
         </Text>
       </View>
+
+      {/* Today Section */}
+      {todaysEvents.length > 0 && (
+        <CollapsibleSection
+          title="Today"
+          count={todaysEvents.length}
+          defaultExpanded={true}
+        >
+          {todaysEvents.map((event) => (
+            <EventCard
+              key={getEventId(event)}
+              event={event}
+              onPress={() => handleEventPress(event)}
+            />
+          ))}
+        </CollapsibleSection>
+      )}
 
       {/* Grouped Sections */}
       {dateGroups.map((groupKey) => {

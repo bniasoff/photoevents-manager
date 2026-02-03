@@ -195,6 +195,9 @@ export const updateEventStatus = async (
     Sent?: boolean;
     Charge?: number;
     Payment?: number;
+    SimchaInitiative?: boolean;
+    Projector?: boolean;
+    Wineman?: boolean;
   }
 ): Promise<Event> => {
   console.log('=== UPDATE STATUS ===');
@@ -223,6 +226,18 @@ export const updateEventStatus = async (
   if (status.Payment !== undefined) {
     updates.Payment = status.Payment;
     console.log(`Payment: ${status.Payment}`);
+  }
+  if (status.SimchaInitiative !== undefined) {
+    updates.SimchaInitiative = status.SimchaInitiative;
+    console.log(`SimchaInitiative: ${status.SimchaInitiative}`);
+  }
+  if (status.Projector !== undefined) {
+    updates.Projector = status.Projector;
+    console.log(`Projector: ${status.Projector}`);
+  }
+  if (status.Wineman !== undefined) {
+    updates.Wineman = status.Wineman;
+    console.log(`Wineman: ${status.Wineman}`);
   }
 
   console.log('====================');
