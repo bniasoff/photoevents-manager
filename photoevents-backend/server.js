@@ -282,6 +282,41 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PhotoEvents Backend Server' });
 });
 
+// Debug endpoint - check all tokens in database
+app.get('/debug/tokens', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('user_tokens')
+      .select('user_id, access_token, refresh_token, expires_at, updated_at');
+
+    if (error) {
+      return res.json({
+        error: error.message,
+        code: error.code,
+        hint: 'Make sure user_tokens table exists in Supabase'
+      });
+    }
+
+    // Mask tokens for security
+    const maskedData = data.map(row => ({
+      user_id: row.user_id,
+      has_access_token: !!row.access_token,
+      has_refresh_token: !!row.refresh_token,
+      access_token_preview: row.access_token ? row.access_token.substring(0, 20) + '...' : null,
+      expires_at: row.expires_at,
+      expired: row.expires_at ? Date.now() > row.expires_at : null,
+      updated_at: row.updated_at
+    }));
+
+    res.json({
+      count: data.length,
+      tokens: maskedData
+    });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
