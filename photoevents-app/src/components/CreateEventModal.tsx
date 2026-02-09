@@ -8,11 +8,17 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import { getCategoryIcon } from '../utils/categoryHelpers';
 import { createEvent, fetchPlaces } from '../services/api';
+import {
+  authenticateWithGoogle,
+  exportToGoogleCalendar,
+  isAuthenticated,
+} from '../services/googleCalendarBackendService';
 
 interface CreateEventModalProps {
   visible: boolean;
@@ -43,7 +49,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [notes, setNotes] = useState('');
   const [simchaInitiative, setSimchaInitiative] = useState(false);
   const [projector, setProjector] = useState(false);
-  const [wineman, setWineman] = useState(false);
+  const [weinman, setWeinman] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
@@ -51,6 +57,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [customPlaces, setCustomPlaces] = useState<string[]>([]);
   const [newPlaceText, setNewPlaceText] = useState('');
   const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
+  const [showCreatedToast, setShowCreatedToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const scrollRef = useRef<ScrollView | null>(null);
   const placeYRef = useRef<number>(0);
@@ -339,7 +347,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         Info: notes.trim(),
         SimchaInitiative: simchaInitiative,
         Projector: projector,
-        Wineman: wineman,
+        Weinman: weinman,
         Charge: 0,
         Payment: 0,
         Paid: false,
@@ -348,8 +356,73 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       });
 
       onEventCreated(newEvent);
-      resetForm();
-      onClose();
+
+      // Auto-export to Google Calendar for all events
+      console.log('Auto-exporting new event to Google Calendar...');
+
+      // Check if user is authenticated
+      const authenticated = await isAuthenticated();
+
+      if (authenticated) {
+        // Export silently in background
+        const exportSuccess = await exportToGoogleCalendar(newEvent);
+
+        if (exportSuccess) {
+          // Show success toast
+          setToastMessage('✓ Created & Exported');
+          setShowCreatedToast(true);
+          // Close modal after toast is shown
+          setTimeout(() => {
+            setShowCreatedToast(false);
+            resetForm();
+            onClose();
+          }, 2000);
+        } else {
+          // Show created toast (export failed)
+          setToastMessage('✓ Created');
+          setShowCreatedToast(true);
+          // Close modal after toast is shown
+          setTimeout(() => {
+            setShowCreatedToast(false);
+            resetForm();
+            onClose();
+          }, 2000);
+        }
+      } else {
+        // Prompt user to authenticate - show toast and close immediately
+        setToastMessage('✓ Created');
+        setShowCreatedToast(true);
+        // Close modal after toast is shown
+        setTimeout(() => {
+          setShowCreatedToast(false);
+          resetForm();
+          onClose();
+        }, 2000);
+
+        // Then show sign-in prompt
+        setTimeout(() => {
+          Alert.alert(
+            'Export to Google Calendar?',
+            'Would you like to sign in and export this event to Google Calendar?',
+            [
+              { text: 'Not Now', style: 'cancel' },
+              {
+                text: 'Sign In & Export',
+                onPress: async () => {
+                  const authSuccess = await authenticateWithGoogle();
+                  if (authSuccess) {
+                    Alert.alert(
+                      'Success',
+                      'Successfully signed in! You can now export events from event details.',
+                      [{ text: 'OK' }]
+                    );
+                  }
+                },
+              },
+            ]
+          );
+        }, 2100);
+      }
     } catch (error) {
       console.error('Error creating event:', error);
     } finally {
@@ -372,7 +445,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setNotes('');
     setSimchaInitiative(false);
     setProjector(false);
-    setWineman(false);
+    setWeinman(false);
   };
 
   const displayDate = (() => {
@@ -417,6 +490,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Created Toast Message */}
+        {showCreatedToast && (
+          <View style={styles.toastContainer}>
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>{toastMessage}</Text>
+            </View>
+          </View>
+        )}
 
         <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false} scrollEnabled={!isPlaceOpen && !isCategoryOpen}>
           {/* Date Badge */}
@@ -804,12 +886,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.checkboxRow}
-              onPress={() => setWineman(!wineman)}
+              onPress={() => setWeinman(!weinman)}
             >
-              <View style={[styles.checkbox, wineman && styles.checkboxChecked]}>
-                {wineman && <Text style={styles.checkboxCheck}>✓</Text>}
+              <View style={[styles.checkbox, weinman && styles.checkboxChecked]}>
+                {weinman && <Text style={styles.checkboxCheck}>✓</Text>}
               </View>
-              <Text style={styles.checkboxLabel}>Wineman</Text>
+              <Text style={styles.checkboxLabel}>Weinman</Text>
             </TouchableOpacity>
           </View>
 
@@ -1206,5 +1288,29 @@ const styles = StyleSheet.create({
   checkboxLabel: {
     fontSize: theme.fontSize.md,
     color: theme.colors.textSecondary,
+  },
+  toastContainer: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  toast: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
   },
 });

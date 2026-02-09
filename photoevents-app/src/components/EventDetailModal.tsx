@@ -12,6 +12,7 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import {
@@ -23,7 +24,12 @@ import {
   getEventId,
 } from '../utils/eventHelpers';
 import { formatEventDateTime, formatTime } from '../utils/dateHelpers';
-import { updateEventStatus, updateEvent, deleteEvent } from '../services/api';
+import { updateEventStatus, updateEvent, deleteEvent, fetchPlaces } from '../services/api';
+import {
+  authenticateWithGoogle,
+  exportToGoogleCalendar,
+  isAuthenticated,
+} from '../services/googleCalendarBackendService';
 
 interface EventDetailModalProps {
   event: Event | null;
@@ -45,6 +51,28 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [chargeText, setChargeText] = useState('');
   const [paymentText, setPaymentText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
+  const [showExportedToast, setShowExportedToast] = useState(false);
+  const [showSavedToast, setShowSavedToast] = useState(false);
+
+  // Helper functions for date format conversion
+  const toAmericanDate = (isoDate: string): string => {
+    // Convert YYYY-MM-DD to MM/DD/YYYY
+    const parts = isoDate.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return isoDate;
+  };
+
+  const toISODate = (americanDate: string): string => {
+    // Convert MM/DD/YYYY to YYYY-MM-DD
+    const parts = americanDate.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    }
+    return americanDate;
+  };
 
   // Edit mode state fields
   const [editName, setEditName] = useState('');
@@ -57,7 +85,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [editEventDate, setEditEventDate] = useState('');
   const [editSimchaInitiative, setEditSimchaInitiative] = useState(false);
   const [editProjector, setEditProjector] = useState(false);
-  const [editWineman, setEditWineman] = useState(false);
+  const [editWeinman, setEditWeinman] = useState(false);
+  const [editFeedback, setEditFeedback] = useState('');
+  const [editRatings, setEditRatings] = useState<number | null>(null);
   const [editStartHour, setEditStartHour] = useState('');
   const [editStartMin, setEditStartMin] = useState('');
   const [editStartPeriod, setEditStartPeriod] = useState<'AM' | 'PM'>('AM');
@@ -66,12 +96,26 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [editEndPeriod, setEditEndPeriod] = useState<'AM' | 'PM'>('PM');
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [isPlaceOpen, setIsPlaceOpen] = useState(false);
+  const [newPlaceText, setNewPlaceText] = useState('');
+  const [customPlaces, setCustomPlaces] = useState<string[]>([]);
+  const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
+
+  // Fetch places from database when modal opens
+  React.useEffect(() => {
+    if (visible) {
+      fetchPlaces().then((map) => {
+        if (Object.keys(map).length > 0) setDbPlaces(map);
+      });
+    }
+  }, [visible]);
 
   React.useEffect(() => {
     setLocalEvent(event);
     if (event) {
-      setChargeText(Math.round(parseAmount(event.Charge)).toString());
-      setPaymentText(Math.round(parseAmount(event.Payment)).toString());
+      const charge = Math.round(parseAmount(event.Charge));
+      const payment = Math.round(parseAmount(event.Payment));
+      setChargeText(charge > 0 ? charge.toString() : '');
+      setPaymentText(payment > 0 ? payment.toString() : '');
 
       // Initialize edit fields
       setEditName(event.Name || '');
@@ -81,10 +125,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       setEditPhone(event.Phone || '');
       setEditInfo(event.Info || '');
       setEditReferral(event.Referral || '');
-      setEditEventDate(event.EventDate ? event.EventDate.slice(0, 10) : '');
+      setEditEventDate(event.EventDate ? toAmericanDate(event.EventDate.slice(0, 10)) : '');
       setEditSimchaInitiative(event.SimchaInitiative || false);
       setEditProjector(event.Projector || false);
-      setEditWineman(event.Wineman || false);
+      setEditWeinman(event.Weinman || false);
+      setEditFeedback(event.Feedback || '');
+      setEditRatings(event.Ratings || null);
 
       // Parse Start time
       if (event.Start) {
@@ -125,7 +171,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const balance = charge - payment;
 
   const handleStatusToggle = async (
-    field: 'Paid' | 'Ready' | 'Sent' | 'SimchaInitiative' | 'Projector' | 'Wineman',
+    field: 'Paid' | 'Ready' | 'Sent' | 'SimchaInitiative' | 'Projector' | 'Weinman',
     newValue: boolean
   ) => {
     const previousEvent = { ...localEvent };
@@ -137,8 +183,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     console.log('New value:', newValue);
 
     // Optimistic update
-    // Handle both string fields (Paid/Ready/Sent) and boolean fields (SimchaInitiative/Projector/Wineman)
-    const fieldValue = ['SimchaInitiative', 'Projector', 'Wineman'].includes(field)
+    // Handle both string fields (Paid/Ready/Sent) and boolean fields (SimchaInitiative/Projector/Weinman)
+    const fieldValue = ['SimchaInitiative', 'Projector', 'Weinman'].includes(field)
       ? newValue
       : newValue ? 'True' : '';
     const optimisticEvent = {
@@ -186,39 +232,95 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
-  const handleExportToGoogleCalendar = () => {
-    const dateStr = localEvent.EventDate.slice(0, 10).replace(/-/g, '');
+  const handleExportToGoogleCalendar = async () => {
+    try {
+      // Check if user is authenticated
+      const authenticated = await isAuthenticated();
 
-    let dates: string;
-    if (localEvent.Start) {
-      const startTime = localEvent.Start.replace(/:/g, '').slice(0, 6);
-      let endTime: string;
-      if (localEvent.End) {
-        endTime = localEvent.End.replace(/:/g, '').slice(0, 6);
-      } else {
-        const [sh, sm, ss] = localEvent.Start.split(':');
-        const endH = (parseInt(sh, 10) + 1).toString().padStart(2, '0');
-        endTime = `${endH}${sm}${ss || '00'}`;
+      if (!authenticated) {
+        // Show confirmation dialog before authentication
+        Alert.alert(
+          'Sign in to Google',
+          'To export events directly to Google Calendar, you need to sign in with your Google account.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Sign In',
+              onPress: async () => {
+                setIsSaving(true);
+                const success = await authenticateWithGoogle();
+                setIsSaving(false);
+
+                if (success) {
+                  Alert.alert(
+                    'Success',
+                    'Successfully signed in! Please try exporting again.',
+                    [{ text: 'OK' }]
+                  );
+                } else {
+                  Alert.alert(
+                    'Sign In Failed',
+                    'Failed to sign in with Google. Please try again.',
+                    [{ text: 'OK' }]
+                  );
+                }
+              },
+            },
+          ]
+        );
+        return;
       }
-      dates = `${dateStr}T${startTime}/${dateStr}T${endTime}`;
-    } else {
-      const nextDay = new Date(new Date(localEvent.EventDate).getTime() + 86400000);
-      const nextDayStr = nextDay.toISOString().slice(0, 10).replace(/-/g, '');
-      dates = `${dateStr}/${nextDayStr}`;
+
+      // Export event to Google Calendar via backend
+      setIsSaving(true);
+      const success = await exportToGoogleCalendar(localEvent);
+      setIsSaving(false);
+
+      if (success) {
+        // Show toast message
+        setShowExportedToast(true);
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          setShowExportedToast(false);
+        }, 3000);
+      } else {
+        Alert.alert(
+          'Export Failed',
+          'Failed to export event. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      setIsSaving(false);
+      console.error('Error exporting to Google Calendar:', error);
+      Alert.alert(
+        'Error',
+        'An unexpected error occurred. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleCopyReference = async () => {
+    if (!localEvent.Phone) {
+      Alert.alert('No Phone Number', 'This event does not have a phone number to copy.');
+      return;
     }
 
-    let url = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(localEvent.Name)}&dates=${dates}`;
+    // Format reference: Name - Phone
+    const reference = `${localEvent.Name} - ${localEvent.Phone}`;
 
-    if (localEvent.Place || localEvent.Address) {
-      let location = localEvent.Place || '';
-      if (localEvent.Address) location += (location ? ', ' : '') + localEvent.Address;
-      url += `&location=${encodeURIComponent(location)}`;
+    try {
+      await Clipboard.setStringAsync(reference);
+      // Show toast message
+      setShowCopiedToast(true);
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        setShowCopiedToast(false);
+      }, 3000);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to copy reference to clipboard.');
     }
-    if (localEvent.Info) {
-      url += `&details=${encodeURIComponent(localEvent.Info)}`;
-    }
-
-    Linking.openURL(url);
   };
 
   const handleFinancialUpdate = async () => {
@@ -333,7 +435,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       setEditEventDate(localEvent.EventDate ? localEvent.EventDate.slice(0, 10) : '');
       setEditSimchaInitiative(localEvent.SimchaInitiative || false);
       setEditProjector(localEvent.Projector || false);
-      setEditWineman(localEvent.Wineman || false);
+      setEditWeinman(localEvent.Weinman || false);
+      setEditFeedback(localEvent.Feedback || '');
+      setEditRatings(localEvent.Ratings || null);
       setChargeText(Math.round(parseAmount(localEvent.Charge)).toString());
       setPaymentText(Math.round(parseAmount(localEvent.Payment)).toString());
 
@@ -362,6 +466,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
     const previousEvent = { ...localEvent };
 
+    // Check if address was changed
+    const addressChanged = editAddress.trim() !== (previousEvent.Address || '').trim();
+    const hasAddress = editAddress.trim().length > 0;
+
     // Convert time to 24-hour format
     const to24Hour = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
       let h = parseInt(hour) || 0;
@@ -384,10 +492,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       Phone: editPhone.trim(),
       Info: editInfo.trim(),
       Referral: editReferral.trim() || null,
-      EventDate: editEventDate,
+      EventDate: toISODate(editEventDate),
       SimchaInitiative: editSimchaInitiative,
       Projector: editProjector,
-      Wineman: editWineman,
+      Weinman: editWeinman,
+      Feedback: editFeedback.trim() || null,
+      Ratings: editRatings,
       Start: startTime,
       End: endTime,
       Charge: parseFloat(chargeText) || 0,
@@ -408,10 +518,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         Phone: editPhone.trim(),
         Info: editInfo.trim(),
         Referral: editReferral.trim() || null,
-        EventDate: editEventDate,
+        EventDate: toISODate(editEventDate),
         SimchaInitiative: editSimchaInitiative,
         Projector: editProjector,
-        Wineman: editWineman,
+        Weinman: editWeinman,
+        Feedback: editFeedback.trim() || null,
+        Ratings: editRatings,
         Start: startTime,
         End: endTime,
         Charge: parseFloat(chargeText) || 0,
@@ -421,6 +533,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       const updatedEvent = await updateEvent(getEventId(localEvent), updates);
       onUpdate(updatedEvent);
       setLocalEvent(updatedEvent);
+
+      // Show toast message
+      setShowSavedToast(true);
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        setShowSavedToast(false);
+      }, 3000);
     } catch (error) {
       // Revert on error
       setLocalEvent(previousEvent);
@@ -446,14 +565,77 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Event Details</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.closeButton}
-            disabled={isSaving}
-          >
-            <Text style={styles.closeButtonText}>✕</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {!isEditing && (
+              <TouchableOpacity
+                onPress={handleCopyReference}
+                disabled={isSaving}
+                style={styles.copyIconButton}
+              >
+                <Text style={styles.copyIconText}>📋</Text>
+                <Text style={styles.copyIconLabel}>Ref</Text>
+              </TouchableOpacity>
+            )}
+            {!isEditing ? (
+              <TouchableOpacity
+                onPress={() => setIsEditing(true)}
+                disabled={isSaving}
+              >
+                <Text style={styles.editButton}>Edit</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  onPress={handleCancelEdit}
+                  disabled={isSaving}
+                >
+                  <Text style={styles.cancelButton}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleFullEdit}
+                  disabled={isSaving}
+                  style={styles.saveButtonContainer}
+                >
+                  <Text style={styles.saveButton}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+              disabled={isSaving}
+            >
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Copied Toast Message */}
+        {showCopiedToast && (
+          <View style={styles.toastContainer}>
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>✓ Copied to clipboard!</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Exported Toast Message */}
+        {showExportedToast && (
+          <View style={styles.toastContainer}>
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>✓ Exported</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Saved Toast Message */}
+        {showSavedToast && (
+          <View style={styles.toastContainer}>
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>✓ Saved</Text>
+            </View>
+          </View>
+        )}
 
         <ScrollView style={styles.content}>
           {/* Icon & Name */}
@@ -467,12 +649,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   placeholder="Event name"
                   placeholderTextColor={theme.colors.textTertiary}
                 />
-                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Date (YYYY-MM-DD)</Text>
+                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Date (MM/DD/YYYY)</Text>
                 <TextInput
                   style={styles.input}
                   value={editEventDate}
                   onChangeText={setEditEventDate}
-                  placeholder="2026-02-01"
+                  placeholder="02/01/2026"
                   placeholderTextColor={theme.colors.textTertiary}
                 />
               </>
@@ -544,33 +726,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
           {/* Financial */}
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Payment</Text>
-              {!isEditing ? (
-                <TouchableOpacity
-                  onPress={() => setIsEditing(true)}
-                  disabled={isSaving}
-                >
-                  <Text style={styles.editButton}>Edit</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.editActions}>
-                  <TouchableOpacity
-                    onPress={handleCancelEdit}
-                    disabled={isSaving}
-                  >
-                    <Text style={styles.cancelButton}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleFullEdit}
-                    disabled={isSaving}
-                    style={styles.saveButtonContainer}
-                  >
-                    <Text style={styles.saveButton}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
+            <Text style={styles.sectionTitle}>Payment</Text>
 
             {isEditing ? (
               <>
@@ -580,8 +736,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                     style={styles.input}
                     value={chargeText}
                     onChangeText={setChargeText}
-                    keyboardType="number-pad"
-                    placeholder="0"
+                    placeholder=""
                     placeholderTextColor={theme.colors.textTertiary}
                   />
                 </View>
@@ -591,8 +746,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                     style={styles.input}
                     value={paymentText}
                     onChangeText={setPaymentText}
-                    keyboardType="number-pad"
-                    placeholder="0"
+                    placeholder=""
                     placeholderTextColor={theme.colors.textTertiary}
                   />
                 </View>
@@ -623,38 +777,230 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           {/* Contact */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact</Text>
-            {localEvent.Phone && (
-              <TouchableOpacity onPress={handlePhonePress}>
-                <Text style={styles.linkText}>
-                  📞 {formatPhoneNumber(localEvent.Phone)}
-                </Text>
-              </TouchableOpacity>
+            {isEditing ? (
+              <TextInput
+                style={styles.input}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="Phone number"
+                placeholderTextColor={theme.colors.textTertiary}
+                keyboardType="phone-pad"
+              />
+            ) : (
+              localEvent.Phone && (
+                <TouchableOpacity onPress={handlePhonePress}>
+                  <Text style={styles.linkText}>
+                    📞 {formatPhoneNumber(localEvent.Phone)}
+                  </Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
 
           {/* Location Info */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Location</Text>
-            {localEvent.Place && (
-              <Text style={styles.infoText}>📍 {localEvent.Place}</Text>
-            )}
-            {localEvent.Address && (
-              <TouchableOpacity onPress={handleAddressPress}>
-                <Text style={styles.linkText}>{localEvent.Address}</Text>
-              </TouchableOpacity>
+            {isEditing ? (
+              <>
+                {/* Place Combo Box */}
+                <View style={styles.placeComboRow}>
+                  <TouchableOpacity
+                    style={[styles.comboBox, isPlaceOpen && styles.comboBoxOpen, styles.placeComboFlex]}
+                    onPress={() => setIsPlaceOpen(!isPlaceOpen)}
+                  >
+                    <View style={styles.comboBoxValue}>
+                      {editPlace ? (
+                        <Text style={styles.comboBoxText}>{editPlace}</Text>
+                      ) : (
+                        <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>
+                      )}
+                    </View>
+                    <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
+                  </TouchableOpacity>
+                  {editPlace ? (
+                    <TouchableOpacity onPress={() => { setEditPlace(''); setEditAddress(''); }}>
+                      <Text style={styles.searchClear}>✕</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Place Dropdown */}
+                {isPlaceOpen && (() => {
+                  const effectivePlaces = dbPlaces ? Object.keys(dbPlaces).sort() : [];
+                  const effectiveAddresses = dbPlaces || {};
+                  const search = newPlaceText.toLowerCase();
+                  const allPlaces = [...effectivePlaces, ...customPlaces];
+                  const filtered = search
+                    ? allPlaces.filter((p) => p.toLowerCase().includes(search))
+                    : allPlaces;
+                  const canAdd = newPlaceText.trim() && !allPlaces.some((p) => p.toLowerCase() === newPlaceText.trim().toLowerCase());
+
+                  return (
+                    <View style={styles.comboBoxDropdown}>
+                      <View style={styles.searchRow}>
+                        <TextInput
+                          style={styles.searchInput}
+                          value={newPlaceText}
+                          onChangeText={setNewPlaceText}
+                          placeholder="Search or add place..."
+                          placeholderTextColor={theme.colors.textTertiary}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            if (canAdd) {
+                              setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
+                              setEditPlace(newPlaceText.trim());
+                              setNewPlaceText('');
+                              setIsPlaceOpen(false);
+                            }
+                          }}
+                        />
+                        {newPlaceText ? (
+                          <TouchableOpacity onPress={() => setNewPlaceText('')}>
+                            <Text style={styles.searchClear}>✕</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <ScrollView
+                        style={styles.comboBoxList}
+                        showsVerticalScrollIndicator={true}
+                        nestedScrollEnabled={true}
+                      >
+                        {filtered.map((p) => (
+                          <TouchableOpacity
+                            key={p}
+                            style={[styles.comboBoxItem, editPlace === p && styles.comboBoxItemActive]}
+                            onPress={() => {
+                              setEditPlace(p);
+                              if (effectiveAddresses[p]) setEditAddress(effectiveAddresses[p]);
+                              setNewPlaceText('');
+                              setIsPlaceOpen(false);
+                            }}
+                          >
+                            <Text style={[styles.comboBoxItemText, editPlace === p && styles.comboBoxItemTextActive]}>
+                              {p}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                        {canAdd && (
+                          <TouchableOpacity
+                            style={styles.comboBoxItem}
+                            onPress={() => {
+                              setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
+                              setEditPlace(newPlaceText.trim());
+                              setNewPlaceText('');
+                              setIsPlaceOpen(false);
+                            }}
+                          >
+                            <Text style={styles.addNewPlaceText}>+ Add "{newPlaceText.trim()}"</Text>
+                          </TouchableOpacity>
+                        )}
+                        {filtered.length === 0 && !canAdd && (
+                          <View style={styles.comboBoxItem}>
+                            <Text style={styles.comboBoxItemText}>No matches</Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  );
+                })()}
+
+                {/* Address Input */}
+                <TextInput
+                  style={[styles.input, { marginLeft: 0, marginTop: theme.spacing.sm }]}
+                  value={editAddress}
+                  onChangeText={setEditAddress}
+                  placeholder="Address"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+              </>
+            ) : (
+              <>
+                {localEvent.Place && (
+                  <Text style={styles.infoText}>📍 {localEvent.Place}</Text>
+                )}
+                {localEvent.Address && (
+                  <TouchableOpacity onPress={handleAddressPress}>
+                    <Text style={styles.linkText}>{localEvent.Address}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
 
           {/* Date & Time */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Schedule</Text>
-            <Text style={styles.infoText}>
-              📅 {formatEventDateTime(localEvent)}
-            </Text>
-            {localEvent.End && (
-              <Text style={styles.infoText}>
-                ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}
-              </Text>
+            {isEditing ? (
+              <>
+                <Text style={styles.timeLabel}>Start Time</Text>
+                <View style={styles.timeRow}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={editStartHour}
+                    onChangeText={setEditStartHour}
+                    placeholder="HH"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={editStartMin}
+                    onChangeText={setEditStartMin}
+                    placeholder="MM"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                  <TouchableOpacity
+                    style={styles.periodButton}
+                    onPress={() => setEditStartPeriod(editStartPeriod === 'AM' ? 'PM' : 'AM')}
+                  >
+                    <Text style={styles.periodButtonText}>{editStartPeriod}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.timeLabel}>End Time</Text>
+                <View style={styles.timeRow}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={editEndHour}
+                    onChangeText={setEditEndHour}
+                    placeholder="HH"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={editEndMin}
+                    onChangeText={setEditEndMin}
+                    placeholder="MM"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                  <TouchableOpacity
+                    style={styles.periodButton}
+                    onPress={() => setEditEndPeriod(editEndPeriod === 'AM' ? 'PM' : 'AM')}
+                  >
+                    <Text style={styles.periodButtonText}>{editEndPeriod}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.infoText}>
+                  📅 {formatEventDateTime(localEvent)}
+                </Text>
+                {localEvent.End && (
+                  <Text style={styles.infoText}>
+                    ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}
+                  </Text>
+                )}
+              </>
             )}
 
             {/* Separator */}
@@ -691,10 +1037,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               </View>
 
               <View style={styles.eventOption}>
-                <Text style={styles.eventOptionText}>Wineman</Text>
+                <Text style={styles.eventOptionText}>Weinman</Text>
                 <Switch
-                  value={localEvent.Wineman || false}
-                  onValueChange={(value) => handleStatusToggle('Wineman', value)}
+                  value={localEvent.Weinman || false}
+                  onValueChange={(value) => handleStatusToggle('Weinman', value)}
                   disabled={isSaving}
                   trackColor={{
                     false: '#ef4444', // Red when false
@@ -721,6 +1067,56 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <Text style={styles.infoText}>{localEvent.Referral}</Text>
             </View>
           )}
+
+          {/* Feedback */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Feedback</Text>
+            {isEditing ? (
+              <TextInput
+                style={[styles.input, styles.feedbackInput]}
+                value={editFeedback}
+                onChangeText={setEditFeedback}
+                placeholder="Client feedback..."
+                placeholderTextColor={theme.colors.textTertiary}
+                multiline
+                textAlignVertical="top"
+              />
+            ) : (
+              localEvent.Feedback ? (
+                <Text style={styles.infoText}>{localEvent.Feedback}</Text>
+              ) : (
+                <Text style={[styles.infoText, styles.placeholderText]}>No feedback yet</Text>
+              )
+            )}
+          </View>
+
+          {/* Ratings */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Rating</Text>
+            <View style={styles.starsContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => isEditing && setEditRatings(star)}
+                  disabled={!isEditing}
+                >
+                  <Text style={styles.star}>
+                    {(isEditing ? editRatings : localEvent.Ratings) && star <= (isEditing ? editRatings! : localEvent.Ratings!)
+                      ? '⭐'
+                      : '☆'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {isEditing && editRatings && (
+                <TouchableOpacity onPress={() => setEditRatings(null)} style={styles.clearRatingBtn}>
+                  <Text style={styles.clearRatingText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {!isEditing && !localEvent.Ratings && (
+              <Text style={[styles.infoText, styles.placeholderText]}>No rating yet</Text>
+            )}
+          </View>
 
           {/* Export to Google Calendar */}
           <View style={styles.section}>
@@ -781,6 +1177,55 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 24,
     color: theme.colors.textSecondary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  copyIconButton: {
+    backgroundColor: theme.colors.primary + '15',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '30',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  copyIconText: {
+    fontSize: 18,
+    marginBottom: 2,
+  },
+  copyIconLabel: {
+    fontSize: 9,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
+    textAlign: 'center',
+  },
+  toastContainer: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  toast: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
   },
   content: {
     flex: 1,
@@ -1017,5 +1462,172 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.divider,
     marginTop: theme.spacing.lg,
     marginBottom: theme.spacing.md,
+  },
+  timeLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  timeInput: {
+    width: 50,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textPrimary,
+    textAlign: 'center',
+    fontWeight: theme.fontWeight.semibold,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  timeSeparator: {
+    fontSize: theme.fontSize.xl,
+    color: theme.colors.textPrimary,
+    marginHorizontal: theme.spacing.xs,
+    fontWeight: theme.fontWeight.bold,
+  },
+  periodButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    marginLeft: theme.spacing.md,
+  },
+  periodButtonText: {
+    fontSize: theme.fontSize.md,
+    color: '#FFFFFF',
+    fontWeight: theme.fontWeight.bold,
+  },
+  // Place combo box styles
+  placeComboRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  placeComboFlex: {
+    flex: 1,
+  },
+  comboBox: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  comboBoxOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+  },
+  comboBoxValue: {
+    flex: 1,
+  },
+  comboBoxText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.medium,
+  },
+  comboBoxPlaceholder: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textTertiary,
+  },
+  comboBoxArrow: {
+    fontSize: 10,
+    color: theme.colors.textTertiary,
+  },
+  comboBoxDropdown: {
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: theme.borderRadius.md,
+    borderBottomRightRadius: theme.borderRadius.md,
+    maxHeight: 200,
+  },
+  comboBoxList: {
+    maxHeight: 150,
+  },
+  comboBoxItem: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 0.5,
+    borderBottomColor: theme.colors.divider,
+  },
+  comboBoxItemActive: {
+    backgroundColor: theme.colors.primary + '20',
+  },
+  comboBoxItemText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+  },
+  comboBoxItemTextActive: {
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.primary,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: theme.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+    paddingVertical: theme.spacing.xs,
+  },
+  searchClear: {
+    fontSize: 18,
+    color: theme.colors.textTertiary,
+    paddingHorizontal: 4,
+  },
+  addNewPlaceText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  feedbackInput: {
+    minHeight: 100,
+    paddingTop: theme.spacing.sm,
+    textAlign: 'left',
+    marginLeft: 0,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  star: {
+    fontSize: 32,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  clearRatingBtn: {
+    marginLeft: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  clearRatingText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  placeholderText: {
+    color: theme.colors.textTertiary,
+    fontStyle: 'italic',
   },
 });

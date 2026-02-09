@@ -5,6 +5,8 @@ import {
   StyleSheet,
   RefreshControl,
   Text,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { Event, EventCategory } from '../types/Event';
 import { EventCard } from '../components/EventCard';
@@ -100,6 +102,18 @@ export const ByCategoryScreen: React.FC = () => {
   // Get sorted years (most recent first)
   const years = Object.keys(groupedEvents).sort((a, b) => parseInt(b) - parseInt(a));
 
+  // Filter events from 2023 onwards with feedback
+  const eventsWithFeedbackAfter2023 = events.filter((event) => {
+    const eventYear = new Date(event.EventDate).getFullYear();
+    return eventYear >= 2023 && event.Feedback && event.Feedback.trim().length > 0;
+  });
+
+  // Filter events from 2023 onwards with high ratings (4-5 stars)
+  const eventsWithHighRatings = events.filter((event) => {
+    const eventYear = new Date(event.EventDate).getFullYear();
+    return eventYear >= 2023 && event.Ratings && event.Ratings > 3;
+  });
+
   // Calculate total events
   const totalEvents = years.reduce((sum, year) => {
     return sum + Object.values(groupedEvents[year]).reduce(
@@ -138,37 +152,72 @@ export const ByCategoryScreen: React.FC = () => {
         if (yearEventCount === 0) return null;
 
         return (
-          <CollapsibleSection
-            key={year}
-            title={`📅 ${year}`}
-            count={yearEventCount}
-            defaultExpanded={false}
-          >
-            {/* Category Sections within Year */}
-            <View style={styles.categoryContainer}>
-              {categories.map((category) => {
-                const eventsInCategory = yearCategories[category];
-                if (eventsInCategory.length === 0) return null;
+          <React.Fragment key={year}>
+            <CollapsibleSection
+              title={`📅 ${year}`}
+              count={yearEventCount}
+              defaultExpanded={false}
+            >
+              {/* Category Sections within Year */}
+              <View style={styles.categoryContainer}>
+                {categories.map((category) => {
+                  const eventsInCategory = yearCategories[category];
+                  if (eventsInCategory.length === 0) return null;
 
-                return (
-                  <CollapsibleSection
-                    key={`${year}-${category}`}
-                    title={`${getCategoryIcon(category)} ${category}`}
-                    count={eventsInCategory.length}
-                    defaultExpanded={false}
-                  >
-                    {eventsInCategory.map((event) => (
-                      <EventCard
-                        key={getEventId(event)}
-                        event={event}
-                        onPress={() => handleEventPress(event)}
-                      />
-                    ))}
-                  </CollapsibleSection>
-                );
-              })}
-            </View>
-          </CollapsibleSection>
+                  return (
+                    <CollapsibleSection
+                      key={`${year}-${category}`}
+                      title={`${getCategoryIcon(category)} ${category}`}
+                      count={eventsInCategory.length}
+                      defaultExpanded={false}
+                    >
+                      {eventsInCategory.map((event) => (
+                        <EventCard
+                          key={getEventId(event)}
+                          event={event}
+                          onPress={() => handleEventPress(event)}
+                        />
+                      ))}
+                    </CollapsibleSection>
+                  );
+                })}
+              </View>
+            </CollapsibleSection>
+
+            {/* Show feedback section after 2023 */}
+            {year === '2023' && eventsWithFeedbackAfter2023.length > 0 && (
+              <CollapsibleSection
+                title="💬 With Feedback"
+                count={eventsWithFeedbackAfter2023.length}
+                defaultExpanded={true}
+              >
+                {eventsWithFeedbackAfter2023.map((event) => (
+                  <EventCard
+                    key={getEventId(event)}
+                    event={event}
+                    onPress={() => handleEventPress(event)}
+                  />
+                ))}
+              </CollapsibleSection>
+            )}
+
+            {/* Show high ratings section after feedback */}
+            {year === '2023' && eventsWithHighRatings.length > 0 && (
+              <CollapsibleSection
+                title="⭐ High Ratings"
+                count={eventsWithHighRatings.length}
+                defaultExpanded={true}
+              >
+                {eventsWithHighRatings.map((event) => (
+                  <EventCard
+                    key={getEventId(event)}
+                    event={event}
+                    onPress={() => handleEventPress(event)}
+                  />
+                ))}
+              </CollapsibleSection>
+            )}
+          </React.Fragment>
         );
       })}
 
