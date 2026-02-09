@@ -311,9 +311,25 @@ Since API has no image fields, choose approach:
 ### Phase 5: Export & Reporting
 **Goal**: Business intelligence features
 - ✅ Export to CSV/PDF
+- ✅ Export to ICS (calendar file format)
+- ✅ Google Calendar export with OAuth authentication
 - ✅ Payment summary reports
 - ✅ Monthly/weekly summaries
 - ✅ Share functionality
+
+### Phase 6: User Experience Enhancements
+**Goal**: Improved UX and productivity features
+- ✅ **Copy Reference Button**: Quick copy event name and phone for texting references
+- ✅ **Toast Notifications**: Green auto-dismissing success notifications (3 seconds)
+  - Copy reference: "✓ Copied to clipboard!"
+  - Export: "✓ Exported"
+  - Save: "✓ Saved"
+  - Create event: "✓ Created & Exported" / "✓ Created"
+- ✅ **Google Calendar Auto-Refresh**: Automatic token refresh when authentication expires
+  - Polling mechanism to wait for OAuth completion
+  - Seamless retry after re-authentication
+  - No manual "try again" clicking needed
+- ✅ **Non-blocking UI**: Toast notifications instead of Alert.alert for success messages
 
 ### Future Enhancements (Post-Launch)
 - Offline mode with local caching
@@ -322,6 +338,8 @@ Since API has no image fields, choose approach:
 - Notes/comments on events
 - Email client directly from app
 - Revenue analytics dashboard
+- SMS feedback import from XML backups
+- Client ratings and feedback tracking
 
 ---
 
@@ -466,7 +484,110 @@ https://photoevents-server.onrender.com
 
 ---
 
-## 10. Next Steps
+## 10. Recent Feature Implementations (Phase 6)
+
+### 10.1 Copy Reference Feature
+**Purpose**: Quickly share client references via text message
+
+**Implementation**:
+- Location: Event Detail Modal header
+- Button design: Clipboard icon (📋) with "Ref" label
+- Format: `{Event Name} - {Phone Number}`
+- Functionality: Copies to clipboard using expo-clipboard
+- Feedback: Green toast notification "✓ Copied to clipboard!"
+
+**Use Case**: When clients ask for photographer references, users can quickly copy the contact info and paste it into a text message.
+
+### 10.2 Toast Notification System
+**Purpose**: Non-blocking success feedback without requiring user dismissal
+
+**Design**:
+- Color: Green (#22c55e) for success
+- Position: Top of modal/screen (80px from top)
+- Duration: 3 seconds auto-dismiss
+- Style: Rounded corners, shadow, white text
+- z-index: 1000 for proper layering
+
+**Notifications**:
+1. **Copy Reference**: "✓ Copied to clipboard!" (3s)
+2. **Export to Calendar**: "✓ Exported" (3s)
+3. **Save Changes**: "✓ Saved" (3s)
+4. **Create Event**:
+   - With export: "✓ Created & Exported" (2s + delayed modal close)
+   - Without export: "✓ Created" (2s + delayed modal close)
+
+**Technical Details**:
+- State-based visibility control
+- setTimeout for auto-dismiss
+- CreateEventModal: 2-second delay before closing to show toast
+- Absolute positioning for overlay effect
+
+### 10.3 Google Calendar Integration
+**Purpose**: Export events directly to user's Google Calendar
+
+**Features**:
+- **OAuth Authentication**: Browser-based Google sign-in
+- **Backend Service**: Vercel-hosted OAuth backend at `https://photoevents-backend.vercel.app`
+- **Event Creation**: Converts app events to Google Calendar events with:
+  - Event name and category
+  - Date and time
+  - Location (venue + address)
+  - Contact phone
+  - Notes
+- **Token Management**: Stores tokens per user ID
+
+**Authentication Flow**:
+1. Check authentication status via `/auth/status`
+2. If not authenticated, prompt user to sign in
+3. Open browser for Google OAuth
+4. Backend handles callback and stores tokens
+5. Frontend retries export after successful auth
+
+### 10.4 Google Calendar Auto-Refresh
+**Purpose**: Eliminate need to manually re-authenticate when tokens expire
+
+**Problem Solved**:
+- Google access tokens expire after ~1 hour
+- Users had to manually "try again" after signing in
+- Interrupting workflow for re-authentication
+
+**Solution Implementation**:
+1. **Detect Token Expiration**: Catch 401 errors from export endpoint
+2. **Automatic Re-authentication**:
+   - Opens browser automatically for OAuth
+   - No user prompt asking "do you want to sign in?"
+3. **Smart Polling**:
+   - Polls `/auth/status` every 1 second
+   - Waits up to 30 seconds for OAuth completion
+   - Logs progress in console
+4. **Automatic Retry**:
+   - Once authentication confirmed, retries export
+   - Uses `isRetry` flag to prevent infinite loops
+   - Shows success toast when complete
+
+**User Experience**:
+- Browser opens briefly for sign-in
+- User completes OAuth in browser
+- Export automatically completes
+- Green toast shows "✓ Exported"
+- **Zero manual intervention** beyond signing in
+
+**Technical Details**:
+- File: `photoevents-app/src/services/googleCalendarBackendService.ts`
+- Functions:
+  - `waitForAuthentication()`: Polling mechanism
+  - `exportToGoogleCalendar()`: Enhanced with auto-refresh
+  - `isAuthenticated()`: Check auth status
+  - `authenticateWithGoogle()`: Trigger OAuth flow
+
+### 10.5 Dependencies Added
+- **expo-clipboard**: Clipboard operations for Copy Reference feature
+  - Installation: `npm install expo-clipboard`
+  - Usage: `Clipboard.setStringAsync(text)`
+
+---
+
+## 11. Next Steps
 
 ### Immediate Actions
 1. ✅ PRD Created and confirmed
@@ -540,6 +661,6 @@ Would you like me to include any of these in the PRD or start with the core feat
 
 ---
 
-**Document Version**: 3.0
-**Last Updated**: 2026-01-26
-**Status**: API Explored & Documented - Ready to Build (Pending Image Strategy Decision)
+**Document Version**: 4.0
+**Last Updated**: 2026-02-09
+**Status**: Phase 6 Complete - Copy Reference, Toast Notifications, Google Calendar Auto-Refresh Implemented
