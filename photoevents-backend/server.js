@@ -44,6 +44,15 @@ app.get('/oauth2callback', async (req, res) => {
     // Exchange authorization code for tokens
     const { tokens } = await oauth2Client.getToken(code);
 
+    console.log('📝 OAuth tokens received:');
+    console.log('  - Access token:', !!tokens.access_token);
+    console.log('  - Refresh token:', !!tokens.refresh_token);
+    console.log('  - Expires in:', tokens.expiry_date ? Math.floor((tokens.expiry_date - Date.now()) / 1000 / 60) + ' minutes' : 'unknown');
+
+    if (!tokens.refresh_token) {
+      console.warn('⚠️  WARNING: No refresh token received! User may have previously authorized the app.');
+    }
+
     // Calculate token expiration timestamp
     const expiresAt = Date.now() + (tokens.expiry_date || 3600 * 1000);
 
@@ -59,11 +68,11 @@ app.get('/oauth2callback', async (req, res) => {
       }, { onConflict: 'user_id' });
 
     if (error) {
-      console.error('Error storing tokens:', error);
+      console.error('❌ Error storing tokens:', error);
       throw error;
     }
 
-    console.log(`Tokens stored for user: ${userId}`);
+    console.log(`✅ Tokens stored for user: ${userId}`);
 
     // Redirect to success page or close window
     res.send(`
@@ -101,7 +110,7 @@ app.get('/auth/status', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('user_tokens')
-      .select('user_id')
+      .select('user_id, access_token, refresh_token, expires_at')
       .eq('user_id', userId)
       .single();
 
@@ -109,10 +118,20 @@ app.get('/auth/status', async (req, res) => {
       console.error('Error checking auth status:', error);
     }
 
-    res.json({ authenticated: !!data });
+    const hasTokens = !!data;
+    const hasRefreshToken = !!(data && data.refresh_token);
+    const tokenExpired = data && data.expires_at ? Date.now() > data.expires_at : false;
+
+    console.log(`Auth status for ${userId}: authenticated=${hasTokens}, hasRefreshToken=${hasRefreshToken}, tokenExpired=${tokenExpired}`);
+
+    res.json({
+      authenticated: hasTokens,
+      hasRefreshToken: hasRefreshToken,
+      tokenExpired: tokenExpired
+    });
   } catch (error) {
     console.error('Error checking auth status:', error);
-    res.json({ authenticated: false });
+    res.json({ authenticated: false, hasRefreshToken: false });
   }
 });
 
@@ -147,7 +166,22 @@ app.post('/calendar/create-event', async (req, res) => {
       .single();
 
     if (fetchError || !tokenData) {
+      console.log(`❌ No tokens found for user: ${userId}`);
       return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log(`📥 Retrieved tokens for user: ${userId}`);
+    console.log('  - Has access token:', !!tokenData.access_token);
+    console.log('  - Has refresh token:', !!tokenData.refresh_token);
+    const timeUntilExpiry = tokenData.expires_at ? Math.floor((tokenData.expires_at - Date.now()) / 1000 / 60) : null;
+    console.log('  - Token expires in:', timeUntilExpiry !== null ? timeUntilExpiry + ' minutes' : 'unknown');
+
+    if (!tokenData.refresh_token) {
+      console.warn('⚠️  WARNING: No refresh token stored! User will need to re-authenticate when access token expires.');
+    }
+
+    if (timeUntilExpiry !== null && timeUntilExpiry < 5) {
+      console.log('🔄 Token will expire soon, googleapis will auto-refresh');
     }
 
     // Reconstruct tokens object for googleapis
@@ -162,7 +196,9 @@ app.post('/calendar/create-event', async (req, res) => {
 
     // Set up token refresh handler - automatically saves refreshed tokens
     oauth2Client.on('tokens', async (newTokens) => {
-      console.log('Token refreshed automatically');
+      console.log('🔄 Token refresh triggered');
+      console.log('New access token received:', !!newTokens.access_token);
+      console.log('New refresh token received:', !!newTokens.refresh_token);
 
       // Update tokens in Supabase with new access token
       const updatedTokens = {
@@ -173,11 +209,17 @@ app.post('/calendar/create-event', async (req, res) => {
         updated_at: new Date().toISOString()
       };
 
-      await supabase
+      console.log('Keeping existing refresh token:', !newTokens.refresh_token);
+
+      const { error: updateError } = await supabase
         .from('user_tokens')
         .upsert(updatedTokens, { onConflict: 'user_id' });
 
-      console.log('Updated tokens saved to Supabase');
+      if (updateError) {
+        console.error('❌ Error saving refreshed tokens:', updateError);
+      } else {
+        console.log('✅ Updated tokens saved to Supabase');
+      }
     });
 
     // Create calendar service
