@@ -53,8 +53,8 @@ app.get('/oauth2callback', async (req, res) => {
       console.warn('⚠️  WARNING: No refresh token received! User may have previously authorized the app.');
     }
 
-    // Calculate token expiration timestamp
-    const expiresAt = Date.now() + (tokens.expiry_date || 3600 * 1000);
+    // tokens.expiry_date from Google is already an absolute timestamp (ms since epoch)
+    const expiresAt = tokens.expiry_date || (Date.now() + 3600 * 1000);
 
     // Store tokens in Supabase
     const { error } = await supabase
@@ -194,22 +194,15 @@ app.post('/calendar/create-event', async (req, res) => {
     // Set credentials
     oauth2Client.setCredentials(tokens);
 
-    // Set up token refresh handler - automatically saves refreshed tokens
-    oauth2Client.on('tokens', async (newTokens) => {
-      console.log('🔄 Token refresh triggered');
-      console.log('New access token received:', !!newTokens.access_token);
-      console.log('New refresh token received:', !!newTokens.refresh_token);
-
-      // Update tokens in Supabase with new access token
+    // Helper to save refreshed tokens to Supabase
+    const saveRefreshedTokens = async (newTokens) => {
       const updatedTokens = {
         user_id: userId,
-        access_token: newTokens.access_token,
-        refresh_token: newTokens.refresh_token || tokenData.refresh_token, // Keep existing refresh token if not provided
+        access_token: newTokens.access_token || tokenData.access_token,
+        refresh_token: newTokens.refresh_token || tokenData.refresh_token,
         expires_at: newTokens.expiry_date || (Date.now() + 3600 * 1000),
         updated_at: new Date().toISOString()
       };
-
-      console.log('Keeping existing refresh token:', !newTokens.refresh_token);
 
       const { error: updateError } = await supabase
         .from('user_tokens')
@@ -218,9 +211,36 @@ app.post('/calendar/create-event', async (req, res) => {
       if (updateError) {
         console.error('❌ Error saving refreshed tokens:', updateError);
       } else {
-        console.log('✅ Updated tokens saved to Supabase');
+        console.log('✅ Refreshed tokens saved to Supabase');
       }
+    };
+
+    // Listen for auto-refresh (use removeAllListeners to avoid stacking handlers)
+    oauth2Client.removeAllListeners('tokens');
+    oauth2Client.on('tokens', async (newTokens) => {
+      console.log('🔄 Auto token refresh triggered');
+      await saveRefreshedTokens(newTokens);
     });
+
+    // If the access token is expired but we have a refresh token, proactively refresh
+    const tokenExpired = tokenData.expires_at && Date.now() > tokenData.expires_at;
+    if (tokenExpired && tokenData.refresh_token) {
+      console.log('🔄 Access token expired, proactively refreshing...');
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+        await saveRefreshedTokens(credentials);
+        console.log('✅ Token refreshed successfully');
+      } catch (refreshError) {
+        console.error('❌ Proactive token refresh failed:', refreshError.message);
+        if (refreshError.message === 'invalid_grant') {
+          console.log('🔑 Refresh token revoked (invalid_grant), clearing tokens...');
+          await supabase.from('user_tokens').delete().eq('user_id', userId);
+          return res.status(401).json({ error: 'Token expired, please re-authenticate', needsReauth: true });
+        }
+        // Don't delete tokens yet - fall through and let the API call try
+      }
+    }
 
     // Create calendar service
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
@@ -244,35 +264,67 @@ app.post('/calendar/create-event', async (req, res) => {
       },
     };
 
-    // googleapis will automatically refresh the token if expired before this call
-    const response = await calendar.events.insert({
-      calendarId: calendarId,
-      resource: event,
-    });
+    // Try to create the event - googleapis will auto-refresh if needed
+    try {
+      const response = await calendar.events.insert({
+        calendarId: calendarId,
+        resource: event,
+      });
 
-    console.log('Event created:', response.data.id);
+      console.log('Event created:', response.data.id);
 
-    res.json({
-      success: true,
-      eventId: response.data.id,
-      eventUrl: response.data.htmlLink,
-    });
+      res.json({
+        success: true,
+        eventId: response.data.id,
+        eventUrl: response.data.htmlLink,
+      });
+    } catch (apiError) {
+      // If 401, try one explicit refresh + retry before giving up
+      if ((apiError.code === 401 || apiError.status === 401) && tokenData.refresh_token) {
+        console.log('🔄 API returned 401, attempting explicit token refresh...');
+        try {
+          const { credentials } = await oauth2Client.refreshAccessToken();
+          oauth2Client.setCredentials(credentials);
+          await saveRefreshedTokens(credentials);
+          console.log('✅ Token refreshed, retrying calendar insert...');
+
+          const retryResponse = await calendar.events.insert({
+            calendarId: calendarId,
+            resource: event,
+          });
+
+          console.log('Event created on retry:', retryResponse.data.id);
+          return res.json({
+            success: true,
+            eventId: retryResponse.data.id,
+            eventUrl: retryResponse.data.htmlLink,
+          });
+        } catch (retryError) {
+          console.error('❌ Retry after refresh failed:', retryError.message);
+          // Refresh token is likely revoked - delete tokens so user re-auths
+          await supabase.from('user_tokens').delete().eq('user_id', userId);
+          return res.status(401).json({ error: 'Token expired, please re-authenticate', needsReauth: true });
+        }
+      }
+
+      // No refresh token or non-401 error
+      if (apiError.code === 401 || apiError.status === 401) {
+        await supabase.from('user_tokens').delete().eq('user_id', userId);
+        return res.status(401).json({ error: 'Token expired, please re-authenticate', needsReauth: true });
+      }
+
+      // invalid_grant means refresh token is revoked (Google returns 400, not 401)
+      if (apiError.message === 'invalid_grant') {
+        console.log('🔑 Refresh token revoked (invalid_grant), clearing tokens...');
+        await supabase.from('user_tokens').delete().eq('user_id', userId);
+        return res.status(401).json({ error: 'Token expired, please re-authenticate', needsReauth: true });
+      }
+
+      throw apiError;
+    }
 
   } catch (error) {
     console.error('Error creating calendar event:', error);
-
-    // Check if token refresh failed (no valid refresh token)
-    if (error.code === 401 || error.message?.includes('invalid_grant')) {
-      console.log('Token refresh failed, deleting tokens');
-      // Delete expired tokens from Supabase
-      await supabase
-        .from('user_tokens')
-        .delete()
-        .eq('user_id', userId);
-
-      return res.status(401).json({ error: 'Token expired, please re-authenticate' });
-    }
-
     res.status(500).json({ error: error.message });
   }
 });
