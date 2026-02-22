@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS events (
   todo TEXT,
   simcha_initiative BOOLEAN DEFAULT FALSE,
   projector BOOLEAN DEFAULT FALSE,
-  wineman BOOLEAN DEFAULT FALSE,
+  weinman BOOLEAN DEFAULT FALSE,
   referral TEXT,
   created_date TIMESTAMPTZ,
   etag_id TEXT,

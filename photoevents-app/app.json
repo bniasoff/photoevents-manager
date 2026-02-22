@@ -2,11 +2,13 @@
   "expo": {
     "name": "photoevents-app",
     "slug": "photoevents-app",
+    "owner": "bniasoff2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "photoevents-app",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -18,6 +20,13 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
+        ],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "photoevents-app"
+            ]
+          }
         ]
       }
     },
@@ -32,6 +41,20 @@
       "permissions": [
         "NOTIFICATIONS",
         "VIBRATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "photoevents-app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "notification": {
@@ -48,14 +71,15 @@
           "icon": "./assets/icon.png",
           "color": "#3B82F6"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "d819b14a-9425-47cd-b87a-01aa99e7516e"
+        "projectId": "da5e0138-33b3-4ee6-9794-63e71774f7f3"
       }
     }
   }

@@ -16,22 +16,29 @@ export const groupEventsByStatus = (
   events.forEach((event) => {
     const status = getEventStatus(event);
 
-    // Check if phone contains 'Weinman' (treat as paid for filtering)
-    const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+    // Check if Weinman checkbox is true (treat as paid for filtering)
+    const isWeinman = event.Weinman || false;
 
-    // Check if event date is in the future
-    const eventDate = new Date(event.EventDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const isFutureEvent = eventDate >= today;
+    // Check if event time has already passed (compare full timestamp)
+    // If EventDate doesn't include time but Start time exists, combine them
+    let eventDateTime = new Date(event.EventDate);
 
-    // Check unpaid (exclude Weinman and future events)
-    if (!status.isPaid && !isWeinman && !isFutureEvent) {
+    // If the event has a Start time and EventDate is at midnight, use the Start time
+    if (event.Start && event.Start !== '') {
+      const dateOnly = event.EventDate.split('T')[0];
+      eventDateTime = new Date(`${dateOnly}T${event.Start}`);
+    }
+
+    const now = new Date();
+    const isPastEvent = eventDateTime < now;
+
+    // Check unpaid (only past events, exclude Weinman)
+    if (!status.isPaid && !isWeinman && isPastEvent) {
       groups.unpaid.push(event);
     }
 
-    // Check not ready
-    if (!status.isReady) {
+    // Check not ready (only past events)
+    if (!status.isReady && isPastEvent) {
       groups.notReady.push(event);
     }
 

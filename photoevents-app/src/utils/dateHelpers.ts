@@ -184,7 +184,7 @@ export const getDateGroupLabel = (groupKey: DateGroupKey): string => {
     lastWeek: 'Last Week',
     thisWeek: 'This Week',
     nextWeek: 'Next Week',
-    lastMonth: 'Last Month',
+    lastMonth: 'Previous Month',
     thisMonth: 'This Month',
     nextMonth: 'Next Month',
     future: 'Future Events',

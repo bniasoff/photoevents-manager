@@ -331,6 +331,21 @@ Since API has no image fields, choose approach:
   - No manual "try again" clicking needed
 - ✅ **Non-blocking UI**: Toast notifications instead of Alert.alert for success messages
 
+### Phase 7: Settings & User Preferences
+**Goal**: Personalization and improved navigation UX
+- ✅ **Settings Screen**: New dedicated tab with three sections (Google Calendar, Display, Navigation)
+- ✅ **Sort Order Preference**: Global ascending/descending sort applied to ALL list screens
+  - Stored in AsyncStorage, persists across app restarts
+  - "Oldest First" (ascending) or "Newest First" (descending)
+  - Changes apply instantly to all mounted screens via DeviceEventEmitter broadcast
+- ✅ **Navigation App Preference**: Choose Waze or Google Maps for address links
+  - Deep link to native app with web fallback
+  - Used in Event Detail Modal when tapping an address
+- ✅ **Google Sign-in Tracking**: Shows exact sign-in date and re-authentication deadline
+  - `signed_in_at` column in Supabase `user_tokens` table
+  - Displays "Re-sign required by [date/time]" with days remaining countdown
+  - Only updated when a brand-new refresh token is received
+
 ### Future Enhancements (Post-Launch)
 - Offline mode with local caching
 - Multi-user support with authentication
@@ -340,6 +355,7 @@ Since API has no image fields, choose approach:
 - Revenue analytics dashboard
 - SMS feedback import from XML backups
 - Client ratings and feedback tracking
+- Publish Google Cloud project (Testing → Production) for indefinite refresh tokens
 
 ---
 
@@ -378,6 +394,11 @@ Since API has no image fields, choose approach:
    - Tap date to see events
    - Today button
    - Navigate months
+
+5. **⚙️ Settings Tab**
+   - **GOOGLE CALENDAR section**: Auth status, access token status, sign-in date, re-sign deadline, sign out
+   - **DISPLAY section**: Sort order (Oldest First / Newest First) — applies to all screens globally
+   - **NAVIGATION section**: Default map app (Waze / Google Maps) for address links
 
 ### Event Card Design (Dark Theme)
 ```
@@ -661,6 +682,6 @@ Would you like me to include any of these in the PRD or start with the core feat
 
 ---
 
-**Document Version**: 4.0
-**Last Updated**: 2026-02-09
-**Status**: Phase 6 Complete - Copy Reference, Toast Notifications, Google Calendar Auto-Refresh Implemented
+**Document Version**: 5.0
+**Last Updated**: 2026-02-22
+**Status**: Phase 7 Complete - Settings Screen, Sort Order Preference, Navigation App Preference, Google Sign-in Tracking Implemented

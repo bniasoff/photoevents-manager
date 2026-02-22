@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   ScrollView,
   StyleSheet,
   RefreshControl,
   Text,
+  DeviceEventEmitter,
 } from 'react-native';
 import { format } from 'date-fns';
 import { Event, DateGroupKey } from '../types/Event';
@@ -15,6 +17,7 @@ import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
+import { getSortOrderPreference } from '../services/navigationPreference';
 import { groupEventsByDate, getDateGroupLabel } from '../utils/dateHelpers';
 import { theme } from '../theme/theme';
 
@@ -34,12 +37,13 @@ export const ByDateScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [sectionKey, setSectionKey] = useState(0);
 
   const loadEvents = async () => {
     try {
       setError(null);
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
       const grouped = groupEventsByDate(sorted);
       setGroupedEvents(grouped);
@@ -51,8 +55,20 @@ export const ByDateScreen: React.FC = () => {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+      setSectionKey((k) => k + 1);
+    }, [])
+  );
+
   useEffect(() => {
-    loadEvents();
+    setGroupedEvents(groupEventsByDate(events));
+  }, [events]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
+    return () => sub.remove();
   }, []);
 
   const handleRefresh = () => {
@@ -76,11 +92,10 @@ export const ByDateScreen: React.FC = () => {
         getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
-    // Re-group events after update
-    const grouped = groupEventsByDate(events.map((event) =>
-      getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
-    ));
-    setGroupedEvents(grouped);
+  };
+
+  const handleEventDelete = (eventId: string) => {
+    setEvents((prev) => prev.filter((e) => getEventId(e) !== eventId));
   };
 
   const getTodaysEvents = (): Event[] => {
@@ -115,6 +130,8 @@ export const ByDateScreen: React.FC = () => {
     0
   );
 
+  const todayLabel = format(new Date(), 'EEEE, MMMM d');
+
   return (
     <ScrollView
       style={styles.container}
@@ -127,29 +144,26 @@ export const ByDateScreen: React.FC = () => {
         />
       }
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerText}>
-          {totalEvents} event{totalEvents !== 1 ? 's' : ''} total
-        </Text>
-      </View>
-
-      {/* Today Section */}
-      {todaysEvents.length > 0 && (
-        <CollapsibleSection
-          title="Today"
-          count={todaysEvents.length}
-          defaultExpanded={true}
-        >
-          {todaysEvents.map((event) => (
+      {/* Today Box */}
+      <View style={styles.todayBox}>
+        <View style={styles.todayHeader}>
+          <Text style={styles.todayLabel}>📅 Today</Text>
+          <Text style={styles.todayDate}>{todayLabel}</Text>
+        </View>
+        {todaysEvents.length > 0 ? (
+          todaysEvents.map((event) => (
             <EventCard
               key={getEventId(event)}
               event={event}
               onPress={() => handleEventPress(event)}
+              onUpdate={handleEventUpdate}
+              onDelete={handleEventDelete}
             />
-          ))}
-        </CollapsibleSection>
-      )}
+          ))
+        ) : (
+          <Text style={styles.noEventsToday}>No events today</Text>
+        )}
+      </View>
 
       {/* Grouped Sections */}
       {dateGroups.map((groupKey) => {
@@ -158,7 +172,7 @@ export const ByDateScreen: React.FC = () => {
 
         return (
           <CollapsibleSection
-            key={groupKey}
+            key={`${groupKey}-${sectionKey}`}
             title={getDateGroupLabel(groupKey)}
             count={eventsInGroup.length}
             defaultExpanded={false}
@@ -168,6 +182,7 @@ export const ByDateScreen: React.FC = () => {
                 key={getEventId(event)}
                 event={event}
                 onPress={() => handleEventPress(event)}
+                onUpdate={handleEventUpdate}
               />
             ))}
           </CollapsibleSection>
@@ -199,12 +214,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  header: {
-    padding: theme.spacing.md,
+  todayBox: {
+    margin: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '50',
+    overflow: 'hidden',
   },
-  headerText: {
+  todayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.primary + '20',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.primary + '30',
+  },
+  todayLabel: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.primary,
+  },
+  todayDate: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
+  },
+  noEventsToday: {
+    padding: theme.spacing.md,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,

@@ -266,20 +266,27 @@ export const generatePaymentSummary = (events: Event[]): PaymentSummary => {
       const balance = charge - payment;
       const status = getEventStatus(event);
 
-      // Check if phone contains 'Weinman' (treat as paid for counting)
-      const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+      // Check if Weinman checkbox is true (treat as paid for counting)
+      const isWeinman = event.Weinman || false;
 
-      // Check if event date is in the future
-      const eventDate = new Date(event.EventDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const isFutureEvent = eventDate >= today;
+      // Check if event time has already passed (compare full timestamp)
+      // If EventDate doesn't include time but Start time exists, combine them
+      let eventDateTime = new Date(event.EventDate);
+
+      // If the event has a Start time and EventDate is at midnight, use the Start time
+      if (event.Start && event.Start !== '') {
+        const dateOnly = event.EventDate.split('T')[0];
+        eventDateTime = new Date(`${dateOnly}T${event.Start}`);
+      }
+
+      const now = new Date();
+      const isPastEvent = eventDateTime < now;
 
       acc.totalCharge += charge;
       acc.totalPaid += payment;
       acc.totalBalance += balance;
-      acc.paidEvents += status.isPaid || isWeinman || isFutureEvent ? 1 : 0;
-      acc.unpaidEvents += !status.isPaid && !isWeinman && !isFutureEvent ? 1 : 0;
+      acc.paidEvents += status.isPaid || isWeinman || !isPastEvent ? 1 : 0;
+      acc.unpaidEvents += !status.isPaid && !isWeinman && isPastEvent ? 1 : 0;
 
       return acc;
     },

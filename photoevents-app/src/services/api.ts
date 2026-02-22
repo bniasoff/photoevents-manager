@@ -27,8 +27,10 @@ const mapSupabaseToEvent = (row: any): Event => {
     ToDo: row.todo || '',
     SimchaInitiative: row.simcha_initiative || false,
     Projector: row.projector || false,
-    Wineman: row.wineman || false,
+    Weinman: row.weinman || false,
     Referral: row.referral || null,
+    Feedback: row.feedback || null,
+    Ratings: row.ratings || null,
     CreatedDate: row.created_date || '',
     EtagID: row.etag_id || '',
     createdAt: row.created_at || '',
@@ -60,8 +62,10 @@ const mapEventToSupabase = (updates: Partial<Event>): any => {
   if (updates.ToDo !== undefined) supabaseUpdates.todo = updates.ToDo;
   if (updates.SimchaInitiative !== undefined) supabaseUpdates.simcha_initiative = updates.SimchaInitiative;
   if (updates.Projector !== undefined) supabaseUpdates.projector = updates.Projector;
-  if (updates.Wineman !== undefined) supabaseUpdates.wineman = updates.Wineman;
+  if (updates.Weinman !== undefined) supabaseUpdates.weinman = updates.Weinman;
   if (updates.Referral !== undefined) supabaseUpdates.referral = updates.Referral;
+  if (updates.Feedback !== undefined) supabaseUpdates.feedback = updates.Feedback;
+  if (updates.Ratings !== undefined) supabaseUpdates.ratings = updates.Ratings;
 
   return supabaseUpdates;
 };
@@ -197,7 +201,7 @@ export const updateEventStatus = async (
     Payment?: number;
     SimchaInitiative?: boolean;
     Projector?: boolean;
-    Wineman?: boolean;
+    Weinman?: boolean;
   }
 ): Promise<Event> => {
   console.log('=== UPDATE STATUS ===');
@@ -235,9 +239,9 @@ export const updateEventStatus = async (
     updates.Projector = status.Projector;
     console.log(`Projector: ${status.Projector}`);
   }
-  if (status.Wineman !== undefined) {
-    updates.Wineman = status.Wineman;
-    console.log(`Wineman: ${status.Wineman}`);
+  if (status.Weinman !== undefined) {
+    updates.Weinman = status.Weinman;
+    console.log(`Weinman: ${status.Weinman}`);
   }
 
   console.log('====================');

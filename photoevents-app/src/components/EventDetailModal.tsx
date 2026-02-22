@@ -13,6 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { openAddressInNavApp } from '../services/navigationPreference';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import {
@@ -23,7 +24,7 @@ import {
   parseBoolean,
   getEventId,
 } from '../utils/eventHelpers';
-import { formatEventDateTime, formatTime } from '../utils/dateHelpers';
+import { formatEventDateTime, formatTime, formatEventDate } from '../utils/dateHelpers';
 import { updateEventStatus, updateEvent, deleteEvent, fetchPlaces } from '../services/api';
 import {
   authenticateWithGoogle,
@@ -225,45 +226,29 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
-  const handleAddressPress = () => {
+  const handleAddressPress = async () => {
     if (localEvent.Address) {
-      const query = encodeURIComponent(localEvent.Address);
-      Linking.openURL(`https://maps.google.com/?q=${query}`);
+      openAddressInNavApp(localEvent.Address);
     }
   };
 
   const handleExportToGoogleCalendar = async () => {
     try {
-      // Check if user is authenticated
       const authenticated = await isAuthenticated();
 
       if (!authenticated) {
-        // Show confirmation dialog before authentication
         Alert.alert(
           'Sign in to Google',
-          'To export events directly to Google Calendar, you need to sign in with your Google account.',
+          'To export events to Google Calendar, you need to sign in with your Google account.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Sign In',
               onPress: async () => {
                 setIsSaving(true);
-                const success = await authenticateWithGoogle();
+                await authenticateWithGoogle();
                 setIsSaving(false);
-
-                if (success) {
-                  Alert.alert(
-                    'Success',
-                    'Successfully signed in! Please try exporting again.',
-                    [{ text: 'OK' }]
-                  );
-                } else {
-                  Alert.alert(
-                    'Sign In Failed',
-                    'Failed to sign in with Google. Please try again.',
-                    [{ text: 'OK' }]
-                  );
-                }
+                Alert.alert('Browser Opened', 'Complete sign-in in your browser, then tap Export again.');
               },
             },
           ]
@@ -271,33 +256,37 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         return;
       }
 
-      // Export event to Google Calendar via backend
       setIsSaving(true);
-      const success = await exportToGoogleCalendar(localEvent);
+      const result = await exportToGoogleCalendar(localEvent);
       setIsSaving(false);
 
-      if (success) {
-        // Show toast message
+      if (result === 'success') {
         setShowExportedToast(true);
-        // Auto-hide after 3 seconds
-        setTimeout(() => {
-          setShowExportedToast(false);
-        }, 3000);
-      } else {
+        setTimeout(() => setShowExportedToast(false), 3000);
+      } else if (result === 'needsReauth') {
         Alert.alert(
-          'Export Failed',
-          'Failed to export event. Please try again.',
-          [{ text: 'OK' }]
+          'Google Sign-in Expired',
+          'Your Google access has expired (this happens every 7 days in testing mode). Please sign in again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Sign In',
+              onPress: async () => {
+                setIsSaving(true);
+                await authenticateWithGoogle();
+                setIsSaving(false);
+                Alert.alert('Browser Opened', 'Complete sign-in in your browser, then tap Export again.');
+              },
+            },
+          ]
         );
+      } else {
+        Alert.alert('Export Failed', 'Failed to export event. Please try again.');
       }
     } catch (error) {
       setIsSaving(false);
       console.error('Error exporting to Google Calendar:', error);
-      Alert.alert(
-        'Error',
-        'An unexpected error occurred. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
 
@@ -564,7 +553,14 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Event Details</Text>
+          <View>
+            <Text style={styles.headerTitle}>Event Details</Text>
+            {(localEvent.createdAt || localEvent.CreatedDate) && (
+              <Text style={styles.headerSubtitle}>
+                Created: {formatEventDate((localEvent.createdAt || localEvent.CreatedDate)!)}
+              </Text>
+            )}
+          </View>
           <View style={styles.headerActions}>
             {!isEditing && (
               <TouchableOpacity
@@ -995,11 +991,19 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 <Text style={styles.infoText}>
                   📅 {formatEventDateTime(localEvent)}
                 </Text>
-                {localEvent.End && (
-                  <Text style={styles.infoText}>
-                    ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}
-                  </Text>
-                )}
+                {localEvent.End && (() => {
+                  const [sh, sm] = localEvent.Start.split(':').map(Number);
+                  const [eh, em] = localEvent.End.split(':').map(Number);
+                  const totalMins = (eh * 60 + em) - (sh * 60 + sm);
+                  const hrs = Math.floor(totalMins / 60);
+                  const mins = totalMins % 60;
+                  const duration = hrs > 0 && mins > 0 ? `${hrs}h ${mins}m` : hrs > 0 ? `${hrs}h` : `${mins}m`;
+                  return (
+                    <Text style={styles.infoText}>
+                      ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}{'  •  '}{duration}
+                    </Text>
+                  );
+                })()}
               </>
             )}
 
@@ -1170,6 +1174,11 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
   },
   closeButton: {
     padding: theme.spacing.sm,

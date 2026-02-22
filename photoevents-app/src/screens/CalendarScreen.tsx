@@ -7,6 +7,8 @@ import {
   Text,
   TouchableOpacity,
   Alert,
+  Modal,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { format, parseISO } from 'date-fns';
@@ -18,10 +20,12 @@ import { EventDetailModal } from '../components/EventDetailModal';
 import { CreateEventModal } from '../components/CreateEventModal';
 import { EventActionMenu } from '../components/EventActionMenu';
 import { fetchEvents, deleteEvent, updateEvent } from '../services/api';
+import { getSortOrderPreference } from '../services/navigationPreference';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { theme } from '../theme/theme';
 import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { getHebrewDatesMap, importHebrewCalendar } from '../services/hebrewCalendarService';
 
 const escapeICS = (str: string): string =>
   str
@@ -105,22 +109,75 @@ export const CalendarScreen: React.FC = () => {
   const [actionMenuEvent, setActionMenuEvent] = useState<Event | null>(null);
   const [isMovingEvent, setIsMovingEvent] = useState(false);
   const [eventToMove, setEventToMove] = useState<Event | null>(null);
+  const [hebrewDatesMap, setHebrewDatesMap] = useState<Record<string, { title: string }>>({});
+  const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [calendarKey, setCalendarKey] = useState(0);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
+
+  const loadHebrewDates = async () => {
+    try {
+      const hebrewDates = await getHebrewDatesMap();
+      setHebrewDatesMap(hebrewDates);
+      return hebrewDates;
+    } catch (err) {
+      console.error('Error loading Hebrew dates:', err);
+      return {};
+    }
+  };
 
   const loadEvents = async () => {
     try {
       setError(null);
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
+
+      // Load Hebrew dates
+      const hebrewDates = await loadHebrewDates();
 
       // Create marked dates object
       const marks: any = {};
+
+      // First, add Hebrew dates with gold/orange color
+      Object.keys(hebrewDates).forEach((date) => {
+        marks[date] = {
+          customStyles: {
+            container: {
+              backgroundColor: '#FFB84D', // Gold/orange for Hebrew holidays
+              borderRadius: 18,
+            },
+            text: {
+              color: '#000000',
+              fontWeight: 'bold',
+            },
+          },
+          events: [],
+          isHebrewDate: true,
+          hebrewTitle: hebrewDates[date].title,
+        };
+      });
+
+      // Then, add event dates - if date already has Hebrew date, use mixed color
       sorted.forEach((event) => {
         try {
           // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
           const dateStr = event.EventDate.slice(0, 10);
           const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
-          if (!marks[date]) {
+
+          if (marks[date] && marks[date].isHebrewDate) {
+            // Date has both Hebrew holiday and events - use gradient/striped color
+            marks[date].customStyles.container = {
+              backgroundColor: '#FF8C42', // Orange blend for dates with both
+              borderRadius: 18,
+              borderWidth: 2,
+              borderColor: theme.colors.purple,
+            };
+            marks[date].customStyles.text = {
+              color: '#FFFFFF',
+              fontWeight: 'bold',
+            };
+          } else if (!marks[date]) {
+            // Date has only events
             marks[date] = {
               customStyles: {
                 container: {
@@ -170,6 +227,11 @@ export const CalendarScreen: React.FC = () => {
     loadEvents();
   }, []);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
+    return () => sub.remove();
+  }, []);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadEvents();
@@ -189,8 +251,31 @@ export const CalendarScreen: React.FC = () => {
   const handleTodayPress = () => {
     const today = format(new Date(), 'yyyy-MM-dd');
     setSelectedDate(today);
+    setCurrentMonth(today);
+    setCalendarKey((k) => k + 1);
     updateEventsForDate(today, events);
   };
+
+  const handleMonthChange = (month: { dateString: string }) => {
+    setCurrentMonth(month.dateString);
+  };
+
+  const handleYearSelect = (year: number) => {
+    const month = currentMonth.slice(5, 7);
+    const newMonth = `${year}-${month}-01`;
+    setCurrentMonth(newMonth);
+    setCalendarKey((k) => k + 1);
+    setYearPickerVisible(false);
+  };
+
+  const MONTH_NAMES = [
+    'January','February','March','April','May','June',
+    'July','August','September','October','November','December',
+  ];
+
+  const currentYear = parseInt(currentMonth.slice(0, 4), 10);
+  const currentMonthIndex = parseInt(currentMonth.slice(5, 7), 10) - 1;
+  const yearRange = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
 
   const handleEventPress = (event: Event) => {
     setSelectedEvent(event);
@@ -286,8 +371,8 @@ export const CalendarScreen: React.FC = () => {
       await updateEvent(getEventId(eventToMove), updates);
 
       // Reload all events from database to ensure we have fresh data
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
 
       // Rebuild marked dates with fresh events
@@ -349,6 +434,23 @@ export const CalendarScreen: React.FC = () => {
     }
   };
 
+  const handleImportHebrewCalendar = async () => {
+    try {
+      const result = await importHebrewCalendar();
+      if (result.success) {
+        Alert.alert(
+          'Import Successful',
+          `Imported ${result.count} Hebrew dates from calendar`,
+          [{ text: 'OK', onPress: () => loadEvents() }]
+        );
+      } else {
+        Alert.alert('Import Failed', result.error || 'Unknown error');
+      }
+    } catch (err) {
+      Alert.alert('Import Failed', String(err));
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading calendar..." />;
   }
@@ -389,10 +491,23 @@ export const CalendarScreen: React.FC = () => {
       >
         {/* Calendar */}
         <Calendar
-          current={selectedDate}
+          key={calendarKey}
+          current={currentMonth}
           onDayPress={handleDayPress}
+          onMonthChange={handleMonthChange}
           markedDates={markedDatesWithSelection}
           markingType="custom"
+          enableSwipeMonths={true}
+          renderHeader={() => (
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarHeaderMonth}>
+                {MONTH_NAMES[currentMonthIndex]}{'  '}
+              </Text>
+              <TouchableOpacity onPress={() => setYearPickerVisible(true)}>
+                <Text style={styles.calendarHeaderYear}>{currentYear} ▾</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           theme={{
             calendarBackground: theme.colors.backgroundSecondary,
             textSectionTitleColor: theme.colors.textSecondary,
@@ -412,10 +527,51 @@ export const CalendarScreen: React.FC = () => {
           style={styles.calendar}
         />
 
-        {/* Toolbar: Today + Export */}
+        {/* Year Picker Modal */}
+        <Modal
+          visible={yearPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setYearPickerVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.yearPickerOverlay}
+            activeOpacity={1}
+            onPress={() => setYearPickerVisible(false)}
+          >
+            <View style={styles.yearPickerContainer}>
+              <Text style={styles.yearPickerTitle}>Select Year</Text>
+              {yearRange.map((year) => (
+                <TouchableOpacity
+                  key={year}
+                  style={[
+                    styles.yearPickerItem,
+                    year === currentYear && styles.yearPickerItemActive,
+                  ]}
+                  onPress={() => handleYearSelect(year)}
+                >
+                  <Text
+                    style={[
+                      styles.yearPickerItemText,
+                      year === currentYear && styles.yearPickerItemTextActive,
+                    ]}
+                  >
+                    {year}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Toolbar: Today + Import + Export */}
         <View style={styles.toolbarRow}>
           <TouchableOpacity style={styles.todayButton} onPress={handleTodayPress}>
-            <Text style={styles.todayButtonText}>📅 Jump to Today</Text>
+            <Text style={styles.todayButtonText}>📅 Today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.importButton} onPress={handleImportHebrewCalendar}>
+            <Text style={styles.importButtonIcon}>📥</Text>
+            <Text style={styles.importButtonText}>Import Calendar</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
             <Text style={styles.exportButtonIcon}>📤</Text>
@@ -425,9 +581,16 @@ export const CalendarScreen: React.FC = () => {
 
         {/* Selected Date Header */}
         <View style={styles.dateHeader}>
-          <Text style={styles.dateHeaderText}>
-            {format(new Date(selectedDate + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
-          </Text>
+          <View>
+            <Text style={styles.dateHeaderText}>
+              {format(new Date(selectedDate + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
+            </Text>
+            {hebrewDatesMap[selectedDate] && (
+              <Text style={styles.hebrewDateText}>
+                ✡️ {hebrewDatesMap[selectedDate].title}
+              </Text>
+            )}
+          </View>
           <View style={styles.eventCount}>
             <Text style={styles.eventCountText}>
               {eventsOnSelectedDate.length} event
@@ -462,6 +625,7 @@ export const CalendarScreen: React.FC = () => {
                 event={event}
                 onPress={() => handleEventPress(event)}
                 onLongPress={handleEventLongPress}
+                onUpdate={handleEventUpdate}
               />
             ))}
           </View>
@@ -525,14 +689,34 @@ const styles = StyleSheet.create({
   },
   todayButton: {
     backgroundColor: theme.colors.cardBackground,
-    flex: 1,
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
     ...theme.shadows.small,
   },
   todayButtonText: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textPrimary,
+  },
+  importButton: {
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    ...theme.shadows.small,
+  },
+  importButtonIcon: {
+    fontSize: 18,
+  },
+  importButtonText: {
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textPrimary,
   },
@@ -568,7 +752,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textPrimary,
-    flex: 1,
+  },
+  hebrewDateText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: '#FFB84D', // Gold/orange to match calendar marking
+    marginTop: theme.spacing.xs,
   },
   eventCount: {
     backgroundColor: theme.colors.primary,
@@ -639,5 +828,59 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.bold,
     color: '#FFFFFF',
     paddingHorizontal: theme.spacing.md,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  calendarHeaderMonth: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.textPrimary,
+  },
+  calendarHeaderYear: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+  },
+  yearPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  yearPickerContainer: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    width: 200,
+    ...theme.shadows.medium,
+  },
+  yearPickerTitle: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  yearPickerItem: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    marginVertical: 2,
+  },
+  yearPickerItemActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  yearPickerItemText: {
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textPrimary,
+    textAlign: 'center',
+  },
+  yearPickerItemTextActive: {
+    fontWeight: theme.fontWeight.bold,
+    color: '#FFFFFF',
   },
 });

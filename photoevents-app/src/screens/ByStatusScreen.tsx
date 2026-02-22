@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   ScrollView,
   StyleSheet,
   RefreshControl,
   Text,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Event, StatusGroupKey } from '../types/Event';
 import { EventCard } from '../components/EventCard';
@@ -14,6 +16,7 @@ import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
+import { getSortOrderPreference } from '../services/navigationPreference';
 import {
   groupEventsByStatus,
   getStatusGroupLabel,
@@ -33,12 +36,13 @@ export const ByStatusScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [sectionKey, setSectionKey] = useState(0);
 
   const loadEvents = async () => {
     try {
       setError(null);
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
       const grouped = groupEventsByStatus(sorted);
       setGroupedEvents(grouped);
@@ -50,9 +54,21 @@ export const ByStatusScreen: React.FC = () => {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+      setSectionKey((k) => k + 1);
+    }, [])
+  );
+
   useEffect(() => {
-    loadEvents();
+    const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
+    return () => sub.remove();
   }, []);
+
+  useEffect(() => {
+    setGroupedEvents(groupEventsByStatus(events));
+  }, [events]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -75,11 +91,10 @@ export const ByStatusScreen: React.FC = () => {
         getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
-    // Re-group events after update
-    const grouped = groupEventsByStatus(events.map((event) =>
-      getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
-    ));
-    setGroupedEvents(grouped);
+  };
+
+  const handleEventDelete = (eventId: string) => {
+    setEvents((prev) => prev.filter((e) => getEventId(e) !== eventId));
   };
 
   if (isLoading) {
@@ -122,7 +137,7 @@ export const ByStatusScreen: React.FC = () => {
 
         return (
           <CollapsibleSection
-            key={groupKey}
+            key={`${groupKey}-${sectionKey}`}
             title={getStatusGroupLabel(groupKey)}
             count={eventsInGroup.length}
             icon={getStatusGroupIcon(groupKey)}
@@ -134,6 +149,8 @@ export const ByStatusScreen: React.FC = () => {
                   key={getEventId(event)}
                   event={event}
                   onPress={() => handleEventPress(event)}
+                  onUpdate={handleEventUpdate}
+                  onDelete={handleEventDelete}
                 />
               ))
             ) : (

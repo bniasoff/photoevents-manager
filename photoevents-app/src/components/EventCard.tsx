@@ -1,33 +1,106 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import {
   getCategoryIcon,
   formatPhoneNumber,
   getEventStatus,
+  getEventId,
 } from '../utils/eventHelpers';
 import { formatEventDateTime } from '../utils/dateHelpers';
+import { updateEventStatus, deleteEvent } from '../services/api';
 
 interface EventCardProps {
   event: Event;
   onPress?: () => void;
   onLongPress?: (event: Event) => void;
+  onUpdate?: (updatedEvent: Event) => void;
+  onDelete?: (eventId: string) => void;
 }
 
-export const EventCard: React.FC<EventCardProps> = ({ event, onPress, onLongPress }) => {
-  const status = getEventStatus(event);
-  const icon = getCategoryIcon(event.Category);
+export const EventCard: React.FC<EventCardProps> = ({ event, onPress, onLongPress, onUpdate, onDelete }) => {
+  const [localEvent, setLocalEvent] = useState(event);
+  const [isDeleted, setIsDeleted] = useState(false);
+  const status = getEventStatus(localEvent);
+  const icon = getCategoryIcon(localEvent.Category);
+
+  useEffect(() => {
+    setLocalEvent(event);
+  }, [event]);
 
   const handlePhonePress = (phone: string) => {
     Linking.openURL(`tel:${phone.replace(/\D/g, '')}`);
   };
 
+  const handleLongPress = () => {
+    if (onLongPress) {
+      onLongPress(localEvent);
+      return;
+    }
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${localEvent.Name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEvent(getEventId(localEvent));
+              setIsDeleted(true);
+              onDelete?.(getEventId(localEvent));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete event. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleStatusBadgePress = (field: 'Paid' | 'Ready' | 'Sent', currentValue: boolean) => {
+    const newValue = !currentValue;
+    const newLabel = field === 'Paid'
+      ? (newValue ? 'PAID' : 'UNPAID')
+      : field === 'Ready'
+      ? (newValue ? 'READY' : 'NOT READY')
+      : (newValue ? 'SENT' : 'NOT SENT');
+
+    Alert.alert(
+      'Change Status',
+      `Mark "${localEvent.Name}" as ${newLabel}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Change',
+          onPress: async () => {
+            const previousEvent = { ...localEvent };
+            // Optimistic update
+            const fieldValue = newValue ? 'True' : '';
+            setLocalEvent({ ...localEvent, [field]: fieldValue });
+            try {
+              const updatedEvent = await updateEventStatus(getEventId(localEvent), { [field]: newValue });
+              setLocalEvent(updatedEvent);
+              onUpdate?.(updatedEvent);
+            } catch (error) {
+              setLocalEvent(previousEvent);
+              Alert.alert('Error', `Failed to update ${field} status. Please try again.`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (isDeleted) return null;
+
   return (
     <TouchableOpacity
       style={styles.card}
       onPress={onPress}
-      onLongPress={() => onLongPress?.(event)}
+      onLongPress={handleLongPress}
       activeOpacity={0.7}
     >
       {/* Header Row */}
@@ -35,80 +108,75 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, onLongPres
         <View style={styles.nameRow}>
           <Text style={styles.icon}>{icon}</Text>
           <Text style={styles.name} numberOfLines={1}>
-            {event.Name}
+            {localEvent.Name}
           </Text>
         </View>
       </View>
 
       {/* Category */}
-      <Text style={styles.category}>{event.Category}</Text>
+      <Text style={styles.category}>{localEvent.Category}</Text>
 
       {/* Venue Info */}
-      {event.Place && (
+      {localEvent.Place && (
         <Text style={styles.venue} numberOfLines={1}>
-          📍 {event.Place}
+          📍 {localEvent.Place}
         </Text>
       )}
 
       {/* Address */}
-      {event.Address && (
+      {localEvent.Address && (
         <Text style={styles.address} numberOfLines={2}>
-          {event.Address}
+          {localEvent.Address}
         </Text>
       )}
 
       {/* Phone */}
-      {event.Phone && (
-        <TouchableOpacity onPress={() => handlePhonePress(event.Phone)}>
-          <Text style={styles.phone}>📞 {formatPhoneNumber(event.Phone)}</Text>
+      {localEvent.Phone && (
+        <TouchableOpacity onPress={() => handlePhonePress(localEvent.Phone)}>
+          <Text style={styles.phone}>📞 {formatPhoneNumber(localEvent.Phone)}</Text>
         </TouchableOpacity>
       )}
 
       {/* Date & Time */}
-      <Text style={styles.dateTime}>📅 {formatEventDateTime(event)}</Text>
+      <Text style={styles.dateTime}>📅 {formatEventDateTime(localEvent)}</Text>
 
       {/* Status Badges */}
       <View style={styles.statusRow}>
-        <View
+        <TouchableOpacity
           style={[
             styles.statusBadge,
             { backgroundColor: status.isPaid ? theme.statusColors.paid : theme.statusColors.unpaid },
           ]}
+          onPress={() => handleStatusBadgePress('Paid', status.isPaid)}
         >
           <Text style={styles.statusText}>
             💰 {status.isPaid ? 'PAID' : 'UNPAID'}
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        <View
+        <TouchableOpacity
           style={[
             styles.statusBadge,
-            {
-              backgroundColor: status.isReady
-                ? theme.statusColors.ready
-                : theme.statusColors.notReady,
-            },
+            { backgroundColor: status.isReady ? theme.statusColors.ready : theme.statusColors.notReady },
           ]}
+          onPress={() => handleStatusBadgePress('Ready', status.isReady)}
         >
           <Text style={styles.statusText}>
             {status.isReady ? '✅ READY' : '⏳ NOT READY'}
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        <View
+        <TouchableOpacity
           style={[
             styles.statusBadge,
-            {
-              backgroundColor: status.isSent
-                ? theme.statusColors.sent
-                : theme.statusColors.notSent,
-            },
+            { backgroundColor: status.isSent ? theme.statusColors.sent : theme.statusColors.notSent },
           ]}
+          onPress={() => handleStatusBadgePress('Sent', status.isSent)}
         >
           <Text style={styles.statusText}>
             {status.isSent ? '📤 SENT' : '📭 NOT SENT'}
           </Text>
-        </View>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -148,7 +216,7 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.sm,
-    marginLeft: 36, // Align with name (icon width + margin)
+    marginLeft: 36,
   },
   venue: {
     fontSize: theme.fontSize.sm,

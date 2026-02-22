@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   ScrollView,
@@ -7,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   Alert,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Event, EventCategory } from '../types/Event';
 import { EventCard } from '../components/EventCard';
@@ -16,6 +18,7 @@ import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
+import { getSortOrderPreference } from '../services/navigationPreference';
 import { groupEventsByYearAndCategory, getCategoryIcon } from '../utils/categoryHelpers';
 import { theme } from '../theme/theme';
 
@@ -27,12 +30,13 @@ export const ByCategoryScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [sectionKey, setSectionKey] = useState(0);
 
   const loadEvents = async () => {
     try {
       setError(null);
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
       const grouped = groupEventsByYearAndCategory(sorted);
       setGroupedEvents(grouped);
@@ -44,9 +48,21 @@ export const ByCategoryScreen: React.FC = () => {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+      setSectionKey((k) => k + 1);
+    }, [])
+  );
+
   useEffect(() => {
-    loadEvents();
+    const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
+    return () => sub.remove();
   }, []);
+
+  useEffect(() => {
+    setGroupedEvents(groupEventsByYearAndCategory(events));
+  }, [events]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -69,11 +85,10 @@ export const ByCategoryScreen: React.FC = () => {
         getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
       )
     );
-    // Re-group events after update
-    const grouped = groupEventsByYearAndCategory(events.map((event) =>
-      getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
-    ));
-    setGroupedEvents(grouped);
+  };
+
+  const handleEventDelete = (eventId: string) => {
+    setEvents((prev) => prev.filter((e) => getEventId(e) !== eventId));
   };
 
   if (isLoading) {
@@ -152,7 +167,7 @@ export const ByCategoryScreen: React.FC = () => {
         if (yearEventCount === 0) return null;
 
         return (
-          <React.Fragment key={year}>
+          <React.Fragment key={`${year}-${sectionKey}`}>
             <CollapsibleSection
               title={`📅 ${year}`}
               count={yearEventCount}
@@ -176,6 +191,8 @@ export const ByCategoryScreen: React.FC = () => {
                           key={getEventId(event)}
                           event={event}
                           onPress={() => handleEventPress(event)}
+                          onUpdate={handleEventUpdate}
+                          onDelete={handleEventDelete}
                         />
                       ))}
                     </CollapsibleSection>
@@ -189,7 +206,7 @@ export const ByCategoryScreen: React.FC = () => {
               <CollapsibleSection
                 title="💬 With Feedback"
                 count={eventsWithFeedbackAfter2023.length}
-                defaultExpanded={true}
+                defaultExpanded={false}
               >
                 {eventsWithFeedbackAfter2023.map((event) => (
                   <EventCard
@@ -206,7 +223,7 @@ export const ByCategoryScreen: React.FC = () => {
               <CollapsibleSection
                 title="⭐ High Ratings"
                 count={eventsWithHighRatings.length}
-                defaultExpanded={true}
+                defaultExpanded={false}
               >
                 {eventsWithHighRatings.map((event) => (
                   <EventCard

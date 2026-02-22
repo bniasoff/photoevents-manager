@@ -364,42 +364,38 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       const authenticated = await isAuthenticated();
 
       if (authenticated) {
-        // Export silently in background
-        const exportSuccess = await exportToGoogleCalendar(newEvent);
+        const exportResult = await exportToGoogleCalendar(newEvent);
 
-        if (exportSuccess) {
-          // Show success toast
+        if (exportResult === 'success') {
           setToastMessage('✓ Created & Exported');
-          setShowCreatedToast(true);
-          // Close modal after toast is shown
-          setTimeout(() => {
-            setShowCreatedToast(false);
-            resetForm();
-            onClose();
-          }, 2000);
-        } else {
-          // Show created toast (export failed)
+        } else if (exportResult === 'needsReauth') {
           setToastMessage('✓ Created');
-          setShowCreatedToast(true);
-          // Close modal after toast is shown
           setTimeout(() => {
-            setShowCreatedToast(false);
-            resetForm();
-            onClose();
-          }, 2000);
+            Alert.alert(
+              'Google Sign-in Expired',
+              'Your Google access has expired. Open the event and tap "Export to Google Calendar" to sign in again.',
+              [{ text: 'OK' }]
+            );
+          }, 2100);
+        } else {
+          setToastMessage('✓ Created');
         }
+
+        setShowCreatedToast(true);
+        setTimeout(() => {
+          setShowCreatedToast(false);
+          resetForm();
+          onClose();
+        }, 2000);
       } else {
-        // Prompt user to authenticate - show toast and close immediately
         setToastMessage('✓ Created');
         setShowCreatedToast(true);
-        // Close modal after toast is shown
         setTimeout(() => {
           setShowCreatedToast(false);
           resetForm();
           onClose();
         }, 2000);
 
-        // Then show sign-in prompt
         setTimeout(() => {
           Alert.alert(
             'Export to Google Calendar?',
@@ -407,16 +403,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             [
               { text: 'Not Now', style: 'cancel' },
               {
-                text: 'Sign In & Export',
+                text: 'Sign In',
                 onPress: async () => {
-                  const authSuccess = await authenticateWithGoogle();
-                  if (authSuccess) {
-                    Alert.alert(
-                      'Success',
-                      'Successfully signed in! You can now export events from event details.',
-                      [{ text: 'OK' }]
-                    );
-                  }
+                  await authenticateWithGoogle();
+                  Alert.alert('Browser Opened', 'Complete sign-in in your browser, then export from event details.');
                 },
               },
             ]

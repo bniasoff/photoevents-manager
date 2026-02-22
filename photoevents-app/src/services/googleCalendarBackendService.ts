@@ -36,18 +36,41 @@ export const authenticateWithGoogle = async (): Promise<boolean> => {
   }
 };
 
+export interface AuthStatus {
+  authenticated: boolean;
+  hasRefreshToken: boolean;
+  tokenExpired: boolean;
+  expiresAt: number | null;   // ms since epoch — access token expiry
+  signedInAt: string | null;  // ISO timestamp — when user last signed in (refresh token issued)
+}
+
 /**
- * Check if user is authenticated
+ * Get full auth status including token expiry time
  */
-export const isAuthenticated = async (): Promise<boolean> => {
+export const getAuthStatus = async (): Promise<AuthStatus> => {
   try {
     const response = await fetch(`${BACKEND_URL}/auth/status?userId=${USER_ID}`);
     const data = await response.json();
-    return data.authenticated;
+    return {
+      authenticated: data.authenticated ?? false,
+      hasRefreshToken: data.hasRefreshToken ?? false,
+      tokenExpired: data.tokenExpired ?? false,
+      expiresAt: data.expiresAt ?? null,
+      signedInAt: data.signedInAt ?? null,
+    };
   } catch (error) {
     console.error('Error checking auth status:', error);
-    return false;
+    return { authenticated: false, hasRefreshToken: false, tokenExpired: false, expiresAt: null, signedInAt: null };
   }
+};
+
+/**
+ * Check if user is authenticated
+ * Returns true if the backend has a refresh token (can auto-renew access)
+ */
+export const isAuthenticated = async (): Promise<boolean> => {
+  const status = await getAuthStatus();
+  return status.authenticated && status.hasRefreshToken;
 };
 
 /**
@@ -67,44 +90,21 @@ export const signOut = async (): Promise<void> => {
   }
 };
 
-/**
- * Wait for authentication to complete by polling the auth status
- * Returns true if authenticated within timeout, false otherwise
- */
-const waitForAuthentication = async (timeoutMs: number = 30000): Promise<boolean> => {
-  const startTime = Date.now();
-  const pollInterval = 1000; // Check every second
-
-  while (Date.now() - startTime < timeoutMs) {
-    const authenticated = await isAuthenticated();
-    if (authenticated) {
-      console.log('Authentication confirmed!');
-      return true;
-    }
-    console.log('Waiting for authentication to complete...');
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-
-  console.log('Authentication timeout');
-  return false;
-};
 
 /**
- * Export event to Google Calendar via backend
- * Automatically handles token refresh if authentication expires
+ * Export event to Google Calendar via backend.
+ * Returns 'success', 'needsReauth' (token expired, user must sign in), or 'failed'.
  */
-export const exportToGoogleCalendar = async (event: Event, isRetry: boolean = false): Promise<boolean> => {
+export const exportToGoogleCalendar = async (event: Event): Promise<'success' | 'needsReauth' | 'failed'> => {
   try {
     console.log('=== EXPORT TO GOOGLE CALENDAR (BACKEND) START ===');
 
-    // Construct ISO datetime from EventDate and Start time
-    // Parse the date components to avoid timezone issues
     const dateParts = event.EventDate.split('T')[0].split('-'); // YYYY-MM-DD
     const year = parseInt(dateParts[0]);
-    const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+    const month = parseInt(dateParts[1]) - 1;
     const day = parseInt(dateParts[2]);
 
-    let hours = 12; // Default to noon if no start time
+    let hours = 12;
     let minutes = 0;
 
     if (event.Start) {
@@ -117,9 +117,7 @@ export const exportToGoogleCalendar = async (event: Event, isRetry: boolean = fa
 
     const response = await fetch(`${BACKEND_URL}/calendar/create-event`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: USER_ID,
         event: {
@@ -138,41 +136,20 @@ export const exportToGoogleCalendar = async (event: Event, isRetry: boolean = fa
       const errorData = await response.json();
       console.error('Failed to create calendar event:', errorData);
 
-      // Check if token expired - auto-refresh and retry
-      if (response.status === 401 && !isRetry) {
-        console.log('Token expired, automatically refreshing authentication...');
-        const authSuccess = await authenticateWithGoogle();
-
-        if (authSuccess) {
-          console.log('Browser opened for re-authentication. Waiting for completion...');
-          // Poll until authentication is complete (with 30 second timeout)
-          const authenticated = await waitForAuthentication(30000);
-
-          if (authenticated) {
-            console.log('Authentication complete, retrying export...');
-            // Retry the export once with isRetry flag to prevent infinite loop
-            return await exportToGoogleCalendar(event, true);
-          } else {
-            console.error('Authentication timeout - please try exporting again');
-            return false;
-          }
-        } else {
-          console.error('Failed to open authentication browser');
-          return false;
-        }
+      if (response.status === 401 && errorData.needsReauth) {
+        console.log('Token expired/revoked — user must re-authenticate');
+        return 'needsReauth';
       }
 
-      return false;
+      return 'failed';
     }
 
     const data = await response.json();
     console.log('Calendar event created:', data.eventId);
-    console.log('Event URL:', data.eventUrl);
     console.log('=== EXPORT SUCCESS ===');
-
-    return true;
+    return 'success';
   } catch (error) {
     console.error('Error exporting to Google Calendar:', error);
-    return false;
+    return 'failed';
   }
 };

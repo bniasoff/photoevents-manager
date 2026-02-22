@@ -57,15 +57,21 @@ app.get('/oauth2callback', async (req, res) => {
     const expiresAt = tokens.expiry_date || (Date.now() + 3600 * 1000);
 
     // Store tokens in Supabase
+    const now = new Date().toISOString();
+    const upsertData = {
+      user_id: userId,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: expiresAt,
+      updated_at: now,
+    };
+    // Only set signed_in_at when we receive a new refresh token (actual sign-in event)
+    if (tokens.refresh_token) {
+      upsertData.signed_in_at = now;
+    }
     const { error } = await supabase
       .from('user_tokens')
-      .upsert({
-        user_id: userId,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id' });
+      .upsert(upsertData, { onConflict: 'user_id' });
 
     if (error) {
       console.error('❌ Error storing tokens:', error);
@@ -110,7 +116,7 @@ app.get('/auth/status', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('user_tokens')
-      .select('user_id, access_token, refresh_token, expires_at')
+      .select('user_id, access_token, refresh_token, expires_at, signed_in_at')
       .eq('user_id', userId)
       .single();
 
@@ -127,7 +133,9 @@ app.get('/auth/status', async (req, res) => {
     res.json({
       authenticated: hasTokens,
       hasRefreshToken: hasRefreshToken,
-      tokenExpired: tokenExpired
+      tokenExpired: tokenExpired,
+      expiresAt: data ? data.expires_at : null,
+      signedInAt: data ? data.signed_in_at : null,
     });
   } catch (error) {
     console.error('Error checking auth status:', error);

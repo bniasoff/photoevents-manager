@@ -94,12 +94,12 @@ export const searchEvents = (events: Event[], query: string): Event[] => {
 };
 
 /**
- * Sort events by date (ascending)
+ * Sort events by date
  */
-export const sortEventsByDate = (events: Event[]): Event[] => {
+export const sortEventsByDate = (events: Event[], order: 'asc' | 'desc' = 'asc'): Event[] => {
   return [...events].sort((a, b) => {
     const dateA = new Date(a.EventDate).getTime();
     const dateB = new Date(b.EventDate).getTime();
-    return dateA - dateB;
+    return order === 'asc' ? dateA - dateB : dateB - dateA;
   });
 };

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   FlatList,
@@ -7,6 +8,7 @@ import {
   RefreshControl,
   Text,
   ScrollView,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Event } from '../types/Event';
 import { EventCard } from '../components/EventCard';
@@ -17,6 +19,7 @@ import { EventDetailModal } from '../components/EventDetailModal';
 import { NotificationBanner } from '../components/NotificationBanner';
 import { fetchEvents } from '../services/api';
 import { searchEvents, sortEventsByDate, getEventStatus, getEventId } from '../utils/eventHelpers';
+import { getSortOrderPreference } from '../services/navigationPreference';
 import { theme } from '../theme/theme';
 
 type StatusFilter = 'all' | 'unpaid' | 'notReady' | 'readyNotSent';
@@ -35,8 +38,8 @@ export const AllEventsScreen: React.FC = () => {
   const loadEvents = async () => {
     try {
       setError(null);
-      const data = await fetchEvents();
-      const sorted = sortEventsByDate(data);
+      const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
+      const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
       setFilteredEvents(sorted);
     } catch (err) {
@@ -47,8 +50,15 @@ export const AllEventsScreen: React.FC = () => {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+    }, [])
+  );
+
   useEffect(() => {
-    loadEvents();
+    const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -58,20 +68,41 @@ export const AllEventsScreen: React.FC = () => {
     if (statusFilter !== 'all') {
       filtered = filtered.filter((event) => {
         const status = getEventStatus(event);
-        // Check if phone contains 'Weinman' (treat as paid for filtering)
-        const isWeinman = event.Phone?.toLowerCase().includes('weinman') ?? false;
+        // Check if Weinman checkbox is true (treat as paid for filtering)
+        const isWeinman = event.Weinman || false;
 
-        // Check if event date is in the future
-        const eventDate = new Date(event.EventDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const isFutureEvent = eventDate >= today;
+        // Check if event time has already passed (compare full timestamp)
+        // If EventDate doesn't include time but Start time exists, combine them
+        let eventDateTime = new Date(event.EventDate);
+
+        // If the event has a Start time and EventDate is at midnight, use the Start time
+        if (event.Start && event.Start !== '') {
+          const dateOnly = event.EventDate.split('T')[0];
+          eventDateTime = new Date(`${dateOnly}T${event.Start}`);
+        }
+
+        const now = new Date();
+        const isPastEvent = eventDateTime < now;
+
+        // Debug logging for troubleshooting (unpaid and notReady filters)
+        if ((statusFilter === 'unpaid' && !status.isPaid && !isWeinman) ||
+            (statusFilter === 'notReady' && !status.isReady)) {
+          console.log(`${statusFilter} event check:`, {
+            Name: event.Name,
+            EventDate: event.EventDate,
+            Start: event.Start,
+            eventDateTime: eventDateTime.toISOString(),
+            now: now.toISOString(),
+            isPastEvent,
+            willShow: isPastEvent
+          });
+        }
 
         switch (statusFilter) {
           case 'unpaid':
-            return !status.isPaid && !isWeinman && !isFutureEvent;
+            return !status.isPaid && !isWeinman && isPastEvent;
           case 'notReady':
-            return !status.isReady;
+            return !status.isReady && isPastEvent;
           case 'readyNotSent':
             return status.isReady && !status.isSent;
           default:
@@ -108,10 +139,8 @@ export const AllEventsScreen: React.FC = () => {
   };
 
   const handleEventDelete = (eventId: string) => {
-    // Remove event from local state
-    setEvents((prevEvents) =>
-      prevEvents.filter((event) => getEventId(event) !== eventId)
-    );
+    setEvents((prevEvents) => prevEvents.filter((event) => getEventId(event) !== eventId));
+    setFilteredEvents((prevFiltered) => prevFiltered.filter((event) => getEventId(event) !== eventId));
   };
 
   if (isLoading) {
@@ -196,7 +225,7 @@ export const AllEventsScreen: React.FC = () => {
             data={filteredEvents}
             keyExtractor={(item) => item._id}
             renderItem={({ item }) => (
-              <EventCard event={item} onPress={() => handleEventPress(item)} />
+              <EventCard event={item} onPress={() => handleEventPress(item)} onUpdate={handleEventUpdate} onDelete={handleEventDelete} />
             )}
             refreshControl={
               <RefreshControl
