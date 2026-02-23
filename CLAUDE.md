@@ -56,6 +56,12 @@ A React Native (Expo) mobile app for managing photography event bookings with an
 
 ### Types
 - `Event.ts` — main Event interface with fields: Name, Place, Address, Phone, Category, EventDate, Start, End, Charge, Payment, Bal, Paid, Ready, Sent, Info, ToDo, SimchaInitiative, Projector, Weinman, Referral, etc.
+- `EventCategory` — 26 recognized categories: Bar Mitzvah, Bat Mitzvah, Wedding, Vort, Bris, Pidyon Haben, School, Photoshoot, CM, Parlor Meeting, Siyum, L'Chaim, Chanukas Habayis, Melava Malka, Presentation, Shiur, Advertisements, Apsherin, Beis Medrash, Birthday, Even Hapina, Hachnosas Sefer Torah, Kollel, Seudas Hodah, Yorzeit, Other
+- Category matching is case-insensitive; "Kolell" normalizes to "Kollel"
+
+### iOS Expo Go Compatibility
+- `notificationService.ios.ts` — stub file used automatically by Metro on iOS; prevents `expo-notifications` (which uses `PushNotificationIOS`) from loading in Expo Go where that native module doesn't exist
+- `notificationService.ts` — real implementation used on Android / standalone builds
 
 ## Backend Endpoints (`server.js`)
 
