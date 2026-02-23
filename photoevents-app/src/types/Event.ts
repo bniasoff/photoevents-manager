@@ -42,6 +42,20 @@ export type EventCategory =
   | 'Parlor Meeting'
   | 'Siyum'
   | "L'Chaim"
+  | 'Chanukas Habayis'
+  | 'Melava Malka'
+  | 'Presentation'
+  | 'Shiur'
+  | 'Advertisements'
+  | 'Apsherin'
+  | 'Bat Mitzvah'
+  | 'Beis Medrash'
+  | 'Birthday'
+  | 'Even Hapina'
+  | 'Hachnosas Sefer Torah'
+  | 'Kollel'
+  | 'Seudas Hodah'
+  | 'Yorzeit'
   | 'Other';
 
 export interface EventStatus {

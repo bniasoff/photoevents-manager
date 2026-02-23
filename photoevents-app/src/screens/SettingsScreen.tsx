@@ -9,9 +9,9 @@ import {
   Modal,
   ActivityIndicator,
   DeviceEventEmitter,
+  Platform,
 } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import { theme } from '../theme/theme';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import {
   getAuthStatus,
   AuthStatus,
@@ -30,6 +30,11 @@ import {
   getSortOrderPreference,
   setSortOrderPreference,
 } from '../services/navigationPreference';
+import { theme } from '../theme/theme';
+
+const notificationsDisabled =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient &&
+  Platform.OS === 'ios';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -151,7 +156,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose
   };
 
   const handleTestNotification = async () => {
+    if (notificationsDisabled) return;
     try {
+      const Notifications = require('expo-notifications');
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '📸 Photo Events',

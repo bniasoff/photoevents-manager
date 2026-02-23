@@ -22,8 +22,14 @@ const determineCategory = (event: Event): EventCategory => {
 
   // Fall back to the Category field
   const category = event.Category || 'Other';
+
+  // Normalize known misspellings
+  const normalized = category.trim();
+  if (normalized.toLowerCase() === 'kolell') return 'Kollel';
+
   const validCategories: EventCategory[] = [
     'Bar Mitzvah',
+    'Bat Mitzvah',
     'Wedding',
     'Vort',
     'Bris',
@@ -34,15 +40,59 @@ const determineCategory = (event: Event): EventCategory => {
     'Parlor Meeting',
     'Siyum',
     "L'Chaim",
+    'Chanukas Habayis',
+    'Melava Malka',
+    'Presentation',
+    'Shiur',
+    'Advertisements',
+    'Apsherin',
+    'Beis Medrash',
+    'Birthday',
+    'Even Hapina',
+    'Hachnosas Sefer Torah',
+    'Kollel',
+    'Seudas Hodah',
+    'Yorzeit',
     'Other'
   ];
 
-  if (validCategories.includes(category as EventCategory)) {
-    return category as EventCategory;
-  }
+  // Case-insensitive match
+  const match = validCategories.find(
+    (c) => c.toLowerCase() === normalized.toLowerCase()
+  );
+  if (match) return match;
 
   return 'Other';
 };
+
+const emptyGroups = (): Record<EventCategory, Event[]> => ({
+  'Bar Mitzvah': [],
+  'Bat Mitzvah': [],
+  'Wedding': [],
+  'Vort': [],
+  'Bris': [],
+  'Pidyon Haben': [],
+  'School': [],
+  'Photoshoot': [],
+  'CM': [],
+  'Parlor Meeting': [],
+  'Siyum': [],
+  "L'Chaim": [],
+  'Chanukas Habayis': [],
+  'Melava Malka': [],
+  'Presentation': [],
+  'Shiur': [],
+  'Advertisements': [],
+  'Apsherin': [],
+  'Beis Medrash': [],
+  'Birthday': [],
+  'Even Hapina': [],
+  'Hachnosas Sefer Torah': [],
+  'Kollel': [],
+  'Seudas Hodah': [],
+  'Yorzeit': [],
+  'Other': [],
+});
 
 /**
  * Group events by category
@@ -50,20 +100,7 @@ const determineCategory = (event: Event): EventCategory => {
 export const groupEventsByCategory = (
   events: Event[]
 ): Record<EventCategory, Event[]> => {
-  const groups: Record<EventCategory, Event[]> = {
-    'Bar Mitzvah': [],
-    'Wedding': [],
-    'Vort': [],
-    'Bris': [],
-    'Pidyon Haben': [],
-    'School': [],
-    'Photoshoot': [],
-    'CM': [],
-    'Parlor Meeting': [],
-    'Siyum': [],
-    "L'Chaim": [],
-    'Other': [],
-  };
+  const groups = emptyGroups();
 
   events.forEach((event) => {
     const category = determineCategory(event);
@@ -82,28 +119,12 @@ export const groupEventsByYearAndCategory = (
   const yearGroups: Record<string, Record<EventCategory, Event[]>> = {};
 
   events.forEach((event) => {
-    // Extract year from EventDate
     const year = new Date(event.EventDate).getFullYear().toString();
 
-    // Initialize year group if it doesn't exist
     if (!yearGroups[year]) {
-      yearGroups[year] = {
-        'Bar Mitzvah': [],
-        'Wedding': [],
-        'Vort': [],
-        'Bris': [],
-        'Pidyon Haben': [],
-        'School': [],
-        'Photoshoot': [],
-        'CM': [],
-        'Parlor Meeting': [],
-        'Siyum': [],
-        "L'Chaim": [],
-        'Other': [],
-      };
+      yearGroups[year] = emptyGroups();
     }
 
-    // Get category and add event to the appropriate year and category
     const category = determineCategory(event);
     yearGroups[year][category].push(event);
   });
@@ -118,6 +139,7 @@ export const getCategoryIcon = (category: EventCategory | string): string => {
   const icons: Record<EventCategory, string> = {
     'Wedding': '💒',
     'Bar Mitzvah': '🎉',
+    'Bat Mitzvah': '🌸',
     'Vort': '💍',
     'Bris': '👶',
     'Pidyon Haben': '🍼',
@@ -127,6 +149,19 @@ export const getCategoryIcon = (category: EventCategory | string): string => {
     'Parlor Meeting': '🏠',
     'Siyum': '📖',
     "L'Chaim": '🥂',
+    'Chanukas Habayis': '🏡',
+    'Melava Malka': '✨',
+    'Presentation': '🎤',
+    'Shiur': '📚',
+    'Advertisements': '📢',
+    'Apsherin': '✂️',
+    'Beis Medrash': '🕍',
+    'Birthday': '🎂',
+    'Even Hapina': '🪨',
+    'Hachnosas Sefer Torah': '📜',
+    'Kollel': '📿',
+    'Seudas Hodah': '🙏',
+    'Yorzeit': '🕯️',
     'Other': '📅',
   };
 

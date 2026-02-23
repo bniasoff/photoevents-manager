@@ -6,8 +6,6 @@ import {
   StyleSheet,
   RefreshControl,
   Text,
-  TouchableOpacity,
-  Alert,
   DeviceEventEmitter,
 } from 'react-native';
 import { Event, EventCategory } from '../types/Event';
@@ -102,6 +100,7 @@ export const ByCategoryScreen: React.FC = () => {
   // Category order for display
   const categories: EventCategory[] = [
     'Bar Mitzvah',
+    'Bat Mitzvah',
     'Vort',
     'Bris',
     'Pidyon Haben',
@@ -112,6 +111,20 @@ export const ByCategoryScreen: React.FC = () => {
     'Parlor Meeting',
     'Siyum',
     "L'Chaim",
+    'Chanukas Habayis',
+    'Melava Malka',
+    'Presentation',
+    'Shiur',
+    'Advertisements',
+    'Apsherin',
+    'Beis Medrash',
+    'Birthday',
+    'Even Hapina',
+    'Hachnosas Sefer Torah',
+    'Kollel',
+    'Seudas Hodah',
+    'Yorzeit',
+    'Other',
   ];
 
   // Get sorted years (most recent first)
@@ -253,6 +266,7 @@ export const ByCategoryScreen: React.FC = () => {
         visible={isModalVisible}
         onClose={handleCloseModal}
         onUpdate={handleEventUpdate}
+        onDelete={handleEventDelete}
       />
     </ScrollView>
   );
