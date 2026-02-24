@@ -66,11 +66,14 @@ export const groupEventsByYearAndCategory = (
   const yearGroups: Record<string, Record<string, Event[]>> = {};
 
   events.forEach((event) => {
-    if (!event.EventDate) return;
-    const yearNum = new Date(event.EventDate).getFullYear();
-    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) return;
+    let year = 'No Date';
+    if (event.EventDate) {
+      const yearNum = new Date(event.EventDate).getFullYear();
+      if (!isNaN(yearNum) && yearNum >= 2000 && yearNum <= 2100) {
+        year = yearNum.toString();
+      }
+    }
 
-    const year = yearNum.toString();
     if (!yearGroups[year]) yearGroups[year] = {};
 
     const category = determineCategory(event);

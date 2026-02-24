@@ -99,7 +99,11 @@ export const ByCategoryScreen: React.FC = () => {
 
 
   // Get sorted years (most recent first)
-  const years = Object.keys(groupedEvents).sort((a, b) => parseInt(b) - parseInt(a));
+  const years = Object.keys(groupedEvents).sort((a, b) => {
+    if (a === 'No Date') return 1;
+    if (b === 'No Date') return -1;
+    return parseInt(b) - parseInt(a);
+  });
 
   // Filter events from 2023 onwards with feedback
   const eventsWithFeedbackAfter2023 = events.filter((event) => {
