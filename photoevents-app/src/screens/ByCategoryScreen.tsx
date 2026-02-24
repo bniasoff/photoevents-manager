@@ -8,7 +8,7 @@ import {
   Text,
   DeviceEventEmitter,
 } from 'react-native';
-import { Event, EventCategory } from '../types/Event';
+import { Event } from '../types/Event';
 import { EventCard } from '../components/EventCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -17,12 +17,12 @@ import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
 import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
 import { getSortOrderPreference } from '../services/navigationPreference';
-import { groupEventsByYearAndCategory, getCategoryIcon } from '../utils/categoryHelpers';
+import { groupEventsByYearAndCategory, getCategoryIcon, sortCategories } from '../utils/categoryHelpers';
 import { theme } from '../theme/theme';
 
 export const ByCategoryScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
-  const [groupedEvents, setGroupedEvents] = useState<Record<string, Record<EventCategory, Event[]>>>({});
+  const [groupedEvents, setGroupedEvents] = useState<Record<string, Record<string, Event[]>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -97,35 +97,6 @@ export const ByCategoryScreen: React.FC = () => {
     return <ErrorMessage message={error} onRetry={loadEvents} />;
   }
 
-  // Category order for display
-  const categories: EventCategory[] = [
-    'Bar Mitzvah',
-    'Bat Mitzvah',
-    'Vort',
-    'Bris',
-    'Pidyon Haben',
-    'School',
-    'Photoshoot',
-    'Wedding',
-    'CM',
-    'Parlor Meeting',
-    'Siyum',
-    "L'Chaim",
-    'Chanukas Habayis',
-    'Melava Malka',
-    'Presentation',
-    'Shiur',
-    'Advertisements',
-    'Apsherin',
-    'Beis Medrash',
-    'Birthday',
-    'Even Hapina',
-    'Hachnosas Sefer Torah',
-    'Kollel',
-    'Seudas Hodah',
-    'Yorzeit',
-    'Other',
-  ];
 
   // Get sorted years (most recent first)
   const years = Object.keys(groupedEvents).sort((a, b) => parseInt(b) - parseInt(a));
@@ -186,11 +157,11 @@ export const ByCategoryScreen: React.FC = () => {
               count={yearEventCount}
               defaultExpanded={false}
             >
-              {/* Category Sections within Year */}
+              {/* Category Sections within Year — derived from data, sorted */}
               <View style={styles.categoryContainer}>
-                {categories.map((category) => {
+                {sortCategories(Object.keys(yearCategories)).map((category) => {
                   const eventsInCategory = yearCategories[category];
-                  if (eventsInCategory.length === 0) return null;
+                  if (!eventsInCategory || eventsInCategory.length === 0) return null;
 
                   return (
                     <CollapsibleSection
