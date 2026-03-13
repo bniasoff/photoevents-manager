@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -68,6 +68,17 @@ export const ByStatusScreen: React.FC = () => {
 
   useEffect(() => {
     setGroupedEvents(groupEventsByStatus(events));
+  }, [events]);
+
+  const phoneEvents = useMemo(() => {
+    const map: Record<string, Event[]> = {};
+    events.forEach((e) => {
+      if (e.Phone) {
+        if (!map[e.Phone]) map[e.Phone] = [];
+        map[e.Phone].push(e);
+      }
+    });
+    return map;
   }, [events]);
 
   const handleRefresh = () => {
@@ -151,6 +162,9 @@ export const ByStatusScreen: React.FC = () => {
                   onPress={() => handleEventPress(event)}
                   onUpdate={handleEventUpdate}
                   onDelete={handleEventDelete}
+                  recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                  relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                  onRelatedEventPress={handleEventPress}
                 />
               ))
             ) : (

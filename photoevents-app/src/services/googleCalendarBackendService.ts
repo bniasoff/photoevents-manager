@@ -91,13 +91,26 @@ export const signOut = async (): Promise<void> => {
 };
 
 
+export interface ExportResult {
+  result: 'success' | 'needsReauth' | 'failed';
+  calendarEventId?: string; // Google Calendar event ID — save this to replace later
+  deleteWarning?: string | null; // set if the old event delete failed on the backend
+}
+
 /**
  * Export event to Google Calendar via backend.
- * Returns 'success', 'needsReauth' (token expired, user must sign in), or 'failed'.
+ * Pass existingCalendarEventId to delete the old calendar entry first (replace/update flow).
+ * Returns the new Google Calendar event ID on success so it can be stored on the event record.
  */
-export const exportToGoogleCalendar = async (event: Event): Promise<'success' | 'needsReauth' | 'failed'> => {
+export const exportToGoogleCalendar = async (
+  event: Event,
+  existingCalendarEventId?: string
+): Promise<ExportResult> => {
   try {
     console.log('=== EXPORT TO GOOGLE CALENDAR (BACKEND) START ===');
+    if (existingCalendarEventId) {
+      console.log('Replacing existing calendar event:', existingCalendarEventId);
+    }
 
     const dateParts = event.EventDate.split('T')[0].split('-'); // YYYY-MM-DD
     const year = parseInt(dateParts[0]);
@@ -128,6 +141,7 @@ export const exportToGoogleCalendar = async (event: Event): Promise<'success' | 
           phone: event.Phone || '',
           notes: event.Info || '',
           scheduledTime: eventDate.toISOString(),
+          existingEventId: existingCalendarEventId || null, // backend deletes this first
         },
       }),
     });
@@ -138,18 +152,21 @@ export const exportToGoogleCalendar = async (event: Event): Promise<'success' | 
 
       if (response.status === 401 && errorData.needsReauth) {
         console.log('Token expired/revoked — user must re-authenticate');
-        return 'needsReauth';
+        return { result: 'needsReauth' };
       }
 
-      return 'failed';
+      return { result: 'failed' };
     }
 
     const data = await response.json();
     console.log('Calendar event created:', data.eventId);
+    if (data.deleteWarning) {
+      console.warn('⚠️ Backend delete warning:', data.deleteWarning);
+    }
     console.log('=== EXPORT SUCCESS ===');
-    return 'success';
+    return { result: 'success', calendarEventId: data.eventId, deleteWarning: data.deleteWarning ?? null };
   } catch (error) {
     console.error('Error exporting to Google Calendar:', error);
-    return 'failed';
+    return { result: 'failed' };
   }
 };

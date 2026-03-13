@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -16,13 +16,14 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
-import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
+import { sortEventsByDate, getEventId, expandEventsForDisplay } from '../utils/eventHelpers';
 import { getSortOrderPreference } from '../services/navigationPreference';
 import { groupEventsByDate, getDateGroupLabel } from '../utils/dateHelpers';
 import { theme } from '../theme/theme';
 
 export const ByDateScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
+  const [expandedEvents, setExpandedEvents] = useState<Event[]>([]);
   const [groupedEvents, setGroupedEvents] = useState<Record<DateGroupKey, Event[]>>({
     lastWeek: [],
     thisWeek: [],
@@ -45,7 +46,9 @@ export const ByDateScreen: React.FC = () => {
       const [data, sortOrder] = await Promise.all([fetchEvents(), getSortOrderPreference()]);
       const sorted = sortEventsByDate(data, sortOrder);
       setEvents(sorted);
-      const grouped = groupEventsByDate(sorted);
+      const expanded = sortEventsByDate(expandEventsForDisplay(sorted), sortOrder);
+      setExpandedEvents(expanded);
+      const grouped = groupEventsByDate(expanded);
       setGroupedEvents(grouped);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events');
@@ -63,13 +66,26 @@ export const ByDateScreen: React.FC = () => {
   );
 
   useEffect(() => {
-    setGroupedEvents(groupEventsByDate(events));
+    const expanded = expandEventsForDisplay(events);
+    setExpandedEvents(expanded);
+    setGroupedEvents(groupEventsByDate(expanded));
   }, [events]);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
     return () => sub.remove();
   }, []);
+
+  const phoneEvents = useMemo(() => {
+    const map: Record<string, Event[]> = {};
+    events.forEach((e) => {
+      if (e.Phone) {
+        if (!map[e.Phone]) map[e.Phone] = [];
+        map[e.Phone].push(e);
+      }
+    });
+    return map;
+  }, [events]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -100,7 +116,7 @@ export const ByDateScreen: React.FC = () => {
 
   const getTodaysEvents = (): Event[] => {
     const today = format(new Date(), 'yyyy-MM-dd');
-    return events.filter((event) => {
+    return expandedEvents.filter((event) => {
       const eventDate = event.EventDate.slice(0, 10);
       return eventDate === today;
     });
@@ -153,11 +169,17 @@ export const ByDateScreen: React.FC = () => {
         {todaysEvents.length > 0 ? (
           todaysEvents.map((event) => (
             <EventCard
-              key={getEventId(event)}
+              key={`${getEventId(event)}-${event._isContinuation ? 'cont' : 'main'}`}
               event={event}
               onPress={() => handleEventPress(event)}
               onUpdate={handleEventUpdate}
               onDelete={handleEventDelete}
+              recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+              relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+              onRelatedEventPress={handleEventPress}
+              isContinuation={!!event._isContinuation}
+              continuationFromDate={event._continuationFromDate}
+              continuationDates={event._continuationDates}
             />
           ))
         ) : (
@@ -175,14 +197,20 @@ export const ByDateScreen: React.FC = () => {
             key={`${groupKey}-${sectionKey}`}
             title={getDateGroupLabel(groupKey)}
             count={eventsInGroup.length}
-            defaultExpanded={false}
+            defaultExpanded={groupKey === 'thisWeek' || groupKey === 'lastWeek' || groupKey === 'nextWeek'}
           >
             {eventsInGroup.map((event) => (
               <EventCard
-                key={getEventId(event)}
+                key={`${getEventId(event)}-${event._isContinuation ? 'cont' : 'main'}`}
                 event={event}
                 onPress={() => handleEventPress(event)}
                 onUpdate={handleEventUpdate}
+                recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                onRelatedEventPress={handleEventPress}
+                isContinuation={!!event._isContinuation}
+                continuationFromDate={event._continuationFromDate}
+                continuationDates={event._continuationDates}
               />
             ))}
           </CollapsibleSection>

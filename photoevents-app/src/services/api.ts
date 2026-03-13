@@ -1,5 +1,19 @@
 import { supabase } from '../config/supabase';
-import { Event } from '../types/Event';
+import { Event, EventLocation } from '../types/Event';
+
+/**
+ * Map Supabase event_locations row to EventLocation
+ */
+const mapLocation = (row: any): EventLocation => ({
+  id: row.id,
+  eventId: row.event_id,
+  place: row.place || '',
+  address: row.address || '',
+  eventDate: row.event_date || '',
+  startTime: row.start_time || '',
+  endTime: row.end_time || '',
+  sortOrder: row.sort_order ?? 0,
+});
 
 /**
  * Map Supabase row to Event format
@@ -13,7 +27,13 @@ const mapSupabaseToEvent = (row: any): Event => {
     Place: row.place || '',
     Address: row.address || '',
     Phone: row.phone || '',
+    Phone2: row.phone2 || '',
+    Phone3: row.phone3 || '',
     Category: row.category || '',
+    Place2: row.place2 || '',
+    Address2: row.address2 || '',
+    Place3: row.place3 || '',
+    Address3: row.address3 || '',
     EventDate: row.event_date,
     Start: row.start_time || '',
     End: row.end_time || '',
@@ -33,8 +53,12 @@ const mapSupabaseToEvent = (row: any): Event => {
     Ratings: row.ratings || null,
     CreatedDate: row.created_date || '',
     EtagID: row.etag_id || '',
+    CalendarEventId: row.calendar_event_id || '',
     createdAt: row.created_at || '',
     updatedAt: row.updated_at || '',
+    locations: (row.event_locations || [])
+      .map(mapLocation)
+      .sort((a: EventLocation, b: EventLocation) => a.sortOrder - b.sortOrder),
   };
 };
 
@@ -48,7 +72,13 @@ const mapEventToSupabase = (updates: Partial<Event>): any => {
   if (updates.Place !== undefined) supabaseUpdates.place = updates.Place;
   if (updates.Address !== undefined) supabaseUpdates.address = updates.Address;
   if (updates.Phone !== undefined) supabaseUpdates.phone = updates.Phone;
+  if (updates.Phone2 !== undefined) supabaseUpdates.phone2 = updates.Phone2;
+  if (updates.Phone3 !== undefined) supabaseUpdates.phone3 = updates.Phone3;
   if (updates.Category !== undefined) supabaseUpdates.category = updates.Category;
+  if (updates.Place2 !== undefined) supabaseUpdates.place2 = updates.Place2;
+  if (updates.Address2 !== undefined) supabaseUpdates.address2 = updates.Address2;
+  if (updates.Place3 !== undefined) supabaseUpdates.place3 = updates.Place3;
+  if (updates.Address3 !== undefined) supabaseUpdates.address3 = updates.Address3;
   if (updates.EventDate !== undefined) supabaseUpdates.event_date = updates.EventDate;
   if (updates.Start !== undefined) supabaseUpdates.start_time = updates.Start;
   if (updates.End !== undefined) supabaseUpdates.end_time = updates.End;
@@ -66,6 +96,7 @@ const mapEventToSupabase = (updates: Partial<Event>): any => {
   if (updates.Referral !== undefined) supabaseUpdates.referral = updates.Referral;
   if (updates.Feedback !== undefined) supabaseUpdates.feedback = updates.Feedback;
   if (updates.Ratings !== undefined) supabaseUpdates.ratings = updates.Ratings;
+  if (updates.CalendarEventId !== undefined) supabaseUpdates.calendar_event_id = updates.CalendarEventId;
 
   return supabaseUpdates;
 };
@@ -79,7 +110,7 @@ export const fetchEvents = async (): Promise<Event[]> => {
 
     const { data, error } = await supabase
       .from('events')
-      .select('*')
+      .select('*, event_locations(*)')
       .order('event_date', { ascending: true })
       .limit(5000);
 
@@ -164,28 +195,57 @@ export const createEvent = async (eventData: Partial<Event>): Promise<Event> => 
 };
 
 /**
- * Fetch all distinct places with their addresses from Supabase
- * Returns a map of place name -> address
+ * Fetch places from places_directory filtered by region.
+ * Lakewood also merges historical event places.
  */
-export const fetchPlaces = async (): Promise<Record<string, string>> => {
+export const fetchPlaces = async (region: string = 'lakewood'): Promise<Record<string, string>> => {
   try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('place, address')
-      .order('place');
-
-    if (error) throw error;
-
     const map: Record<string, string> = {};
-    (data || []).forEach((r: any) => {
-      const p = (r.place || '').trim();
-      const a = (r.address || '').trim();
-      if (p && map[p] === undefined) map[p] = a;
-    });
+
+    if (region === 'lakewood') {
+      // Lakewood: directory venues + full event history
+      const [eventsRes, dirRes] = await Promise.all([
+        supabase.from('events').select('place, address').order('place'),
+        supabase.from('places_directory').select('name, address').eq('region', 'lakewood').order('name'),
+      ]);
+      (eventsRes.data || []).forEach((r: any) => {
+        const p = (r.place || '').trim();
+        const a = (r.address || '').trim();
+        if (p && map[p] === undefined) map[p] = a;
+      });
+      (dirRes.data || []).forEach((r: any) => {
+        const p = (r.name || '').trim();
+        const a = (r.address || '').trim();
+        if (p) map[p] = a;
+      });
+    } else {
+      // All other regions: places_directory filtered by region only
+      const { data } = await supabase
+        .from('places_directory').select('name, address').eq('region', region).order('name');
+      (data || []).forEach((r: any) => {
+        const p = (r.name || '').trim();
+        const a = (r.address || '').trim();
+        if (p) map[p] = a;
+      });
+    }
+
     return map;
   } catch (error) {
     console.error('Error fetching places:', error);
     return {};
+  }
+};
+
+/**
+ * Save a new place to places_directory (upsert by name).
+ */
+export const savePlace = async (name: string, address: string, region: string = 'lakewood'): Promise<void> => {
+  try {
+    await supabase
+      .from('places_directory')
+      .upsert({ name: name.trim(), address: address.trim(), region }, { onConflict: 'name' });
+  } catch (error) {
+    console.error('Error saving place:', error);
   }
 };
 
@@ -248,6 +308,43 @@ export const updateEventStatus = async (
   console.log('====================');
 
   return updateEvent(eventId, updates);
+};
+
+/**
+ * Replace all locations for an event (delete existing, then bulk insert)
+ */
+export const saveEventLocations = async (
+  eventId: string,
+  locations: Omit<EventLocation, 'id' | 'eventId'>[]
+): Promise<EventLocation[]> => {
+  // Delete existing
+  const { error: deleteError } = await supabase
+    .from('event_locations')
+    .delete()
+    .eq('event_id', eventId);
+
+  if (deleteError) throw deleteError;
+
+  if (locations.length === 0) return [];
+
+  const rows = locations.map((loc, i) => ({
+    event_id: eventId,
+    place: loc.place,
+    address: loc.address,
+    event_date: loc.eventDate || '',
+    start_time: loc.startTime || '',
+    end_time: loc.endTime || '',
+    sort_order: i,
+  }));
+
+  const { data, error } = await supabase
+    .from('event_locations')
+    .insert(rows)
+    .select();
+
+  if (error) throw error;
+
+  return (data || []).map(mapLocation).sort((a, b) => a.sortOrder - b.sortOrder);
 };
 
 export const deleteEvent = async (eventId: string): Promise<void> => {

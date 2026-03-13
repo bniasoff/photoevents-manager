@@ -10,15 +10,45 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import { getCategoryIcon } from '../utils/categoryHelpers';
-import { createEvent, fetchPlaces } from '../services/api';
+import { createEvent, updateEvent, fetchPlaces, saveEventLocations, savePlace } from '../services/api';
+import { getUserLocationPreference, getReminderEnabled, getReminderMinutes } from '../services/navigationPreference';
+import { schedulePreEventReminder } from '../services/notificationService';
 import {
   authenticateWithGoogle,
   exportToGoogleCalendar,
   isAuthenticated,
 } from '../services/googleCalendarBackendService';
+
+interface ExtraLocRow {
+  place: string;
+  address: string;
+  eventDate: string;        // MM/DD/YYYY or ''
+  startHour: string;
+  startMin: string;
+  startPeriod: 'AM' | 'PM';
+  endHour: string;
+  endMin: string;
+  endPeriod: 'AM' | 'PM';
+  placeSearch: string;
+}
+
+const toISODateCreate = (americanDate: string): string => {
+  const parts = americanDate.split('/');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+  }
+  return americanDate;
+};
+
+const toAmericanDateCreate = (iso: string): string => {
+  const parts = iso.split('-');
+  if (parts.length === 3) return `${parts[1]}/${parts[2]}/${parts[0]}`;
+  return iso;
+};
 
 interface CreateEventModalProps {
   visible: boolean;
@@ -45,13 +75,19 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [name, setName] = useState('');
   const [place, setPlace] = useState('');
   const [address, setAddress] = useState('');
+  const [extraLocations, setExtraLocations] = useState<ExtraLocRow[]>([]);
+  const [openExtraDropdownIdx, setOpenExtraDropdownIdx] = useState<number | null>(null);
   const [phone, setPhone] = useState('');
+  const [phone2, setPhone2] = useState('');
+  const [phone3, setPhone3] = useState('');
+  const [phoneCount, setPhoneCount] = useState(1);
   const [notes, setNotes] = useState('');
   const [simchaInitiative, setSimchaInitiative] = useState(false);
   const [projector, setProjector] = useState(false);
   const [weinman, setWeinman] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [isPlaceOpen, setIsPlaceOpen] = useState(false);
   const [customPlaces, setCustomPlaces] = useState<string[]>([]);
@@ -59,6 +95,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [datePickerLocIdx, setDatePickerLocIdx] = useState<number | null>(null);
+  const [userRegion, setUserRegion] = useState<string>('lakewood');
 
   const scrollRef = useRef<ScrollView | null>(null);
   const placeYRef = useRef<number>(0);
@@ -66,8 +104,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      fetchPlaces().then((map) => {
-        if (Object.keys(map).length > 0) setDbPlaces(map);
+      getUserLocationPreference().then((region) => {
+        setUserRegion(region);
+        fetchPlaces(region).then((map) => {
+          setDbPlaces(map); // always set — even empty — so fallback to Lakewood doesn't trigger
+        });
       });
     }
   }, [visible]);
@@ -295,8 +336,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   };
 
-  const effectivePlaces = dbPlaces ? Object.keys(dbPlaces).sort() : places;
-  const effectiveAddresses = dbPlaces || placeAddresses;
+  // dbPlaces=null means still loading; only fall back to hardcoded Lakewood list while loading
+  const effectivePlaces = dbPlaces !== null ? Object.keys(dbPlaces).sort() : places;
+  const effectiveAddresses = dbPlaces !== null ? dbPlaces : placeAddresses;
 
   const to24Hour = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
     let h = parseInt(hour) || 0;
@@ -343,7 +385,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         End: endTime,
         Place: place.trim(),
         Address: address.trim(),
+        Place2: extraLocations[0]?.place.trim() || '',
+        Address2: extraLocations[0]?.address.trim() || '',
+        Place3: extraLocations[1]?.place.trim() || '',
+        Address3: extraLocations[1]?.address.trim() || '',
         Phone: phone.trim(),
+        Phone2: phone2.trim(),
+        Phone3: phone3.trim(),
         Info: notes.trim(),
         SimchaInitiative: simchaInitiative,
         Projector: projector,
@@ -355,21 +403,37 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         Sent: false,
       });
 
-      onEventCreated(newEvent);
+      // Save to event_locations table
+      const allLocations = [
+        { place: place.trim(), address: address.trim(), eventDate: selectedDate, startTime, endTime, sortOrder: 0 },
+        ...extraLocations.map((loc, i) => ({
+          place: loc.place.trim(),
+          address: loc.address.trim(),
+          eventDate: loc.eventDate ? toISODateCreate(loc.eventDate) : '',
+          startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
+          endTime: loc.endHour ? to24Hour(loc.endHour, loc.endMin, loc.endPeriod) : '',
+          sortOrder: i + 1,
+        })),
+      ];
+      try { await saveEventLocations(newEvent.id, allLocations); } catch (e) { console.warn('saveEventLocations failed:', e); }
 
       // Auto-export to Google Calendar for all events
       console.log('Auto-exporting new event to Google Calendar...');
+
+      let finalEvent = newEvent;
+      let toastMsg = '✓ Created';
 
       // Check if user is authenticated
       const authenticated = await isAuthenticated();
 
       if (authenticated) {
-        const exportResult = await exportToGoogleCalendar(newEvent);
+        const { result: exportResult, calendarEventId } = await exportToGoogleCalendar(newEvent);
 
-        if (exportResult === 'success') {
-          setToastMessage('✓ Created & Exported');
+        // Save Google Calendar event ID so future edits can replace (not duplicate) the entry
+        if (exportResult === 'success' && calendarEventId) {
+          finalEvent = await updateEvent(newEvent.id, { CalendarEventId: calendarEventId });
+          toastMsg = '✓ Created & Exported';
         } else if (exportResult === 'needsReauth') {
-          setToastMessage('✓ Created');
           setTimeout(() => {
             Alert.alert(
               'Google Sign-in Expired',
@@ -377,25 +441,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               [{ text: 'OK' }]
             );
           }, 2100);
-        } else {
-          setToastMessage('✓ Created');
         }
-
-        setShowCreatedToast(true);
-        setTimeout(() => {
-          setShowCreatedToast(false);
-          resetForm();
-          onClose();
-        }, 2000);
       } else {
-        setToastMessage('✓ Created');
-        setShowCreatedToast(true);
-        setTimeout(() => {
-          setShowCreatedToast(false);
-          resetForm();
-          onClose();
-        }, 2000);
-
         setTimeout(() => {
           Alert.alert(
             'Export to Google Calendar?',
@@ -413,6 +460,21 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           );
         }, 2100);
       }
+
+      // Notify parent with the final event (includes CalendarEventId if export succeeded)
+      onEventCreated(finalEvent);
+
+      // Schedule pre-event reminder if enabled
+      const [remEnabled, remMins] = await Promise.all([getReminderEnabled(), getReminderMinutes()]);
+      if (remEnabled) schedulePreEventReminder(finalEvent, remMins);
+
+      setToastMessage(toastMsg);
+      setShowCreatedToast(true);
+      setTimeout(() => {
+        setShowCreatedToast(false);
+        resetForm();
+        onClose();
+      }, 2000);
     } catch (error) {
       console.error('Error creating event:', error);
     } finally {
@@ -422,6 +484,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const resetForm = () => {
     setCategory(null);
+    setCategorySearch('');
     setStartHour('');
     setStartMin('');
     setStartPeriod('AM');
@@ -431,7 +494,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setName('');
     setPlace('');
     setAddress('');
+    setExtraLocations([]);
+    setOpenExtraDropdownIdx(null);
     setPhone('');
+    setPhone2('');
+    setPhone3('');
+    setPhoneCount(1);
     setNotes('');
     setSimchaInitiative(false);
     setProjector(false);
@@ -453,6 +521,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   })();
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -528,80 +597,99 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               <Text style={styles.comboBoxArrow}>{isCategoryOpen ? '▲' : '▼'}</Text>
             </TouchableOpacity>
 
-            {isCategoryOpen && (
-              <View style={styles.comboBoxDropdown}>
-                <ScrollView
-                  style={styles.comboBoxList}
-                  showsVerticalScrollIndicator={true}
-                  nestedScrollEnabled={true}
-                >
-                  {categories.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[styles.comboBoxItem, category === cat && styles.comboBoxItemActive]}
-                      onPress={() => {
-                        setCategory(cat);
-                        setIsCategoryOpen(false);
-                      }}
-                    >
-                      <Text style={styles.comboBoxItemIcon}>{getCategoryIcon(cat)}</Text>
-                      <Text style={[styles.comboBoxItemText, category === cat && styles.comboBoxItemTextActive]}>
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  {customCategories.map((cat) => (
-                    <TouchableOpacity
-                      key={`custom-${cat}`}
-                      style={[styles.comboBoxItem, category === cat && styles.comboBoxItemActive]}
-                      onPress={() => {
-                        setCategory(cat);
-                        setIsCategoryOpen(false);
-                      }}
-                    >
-                      <Text style={styles.comboBoxItemIcon}>📌</Text>
-                      <Text style={[styles.comboBoxItemText, category === cat && styles.comboBoxItemTextActive]}>
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <View style={styles.addCategoryRow}>
-                  <TextInput
-                    style={styles.addCategoryInput}
-                    value={newCategoryText}
-                    onChangeText={setNewCategoryText}
-                    placeholder="Add new category..."
-                    placeholderTextColor={theme.colors.textTertiary}
-                    onSubmitEditing={() => {
-                      const trimmed = newCategoryText.trim();
-                      if (trimmed && !categories.includes(trimmed) && !customCategories.includes(trimmed)) {
-                        setCustomCategories((prev) => [...prev, trimmed]);
-                        setCategory(trimmed);
-                        setNewCategoryText('');
-                        setIsCategoryOpen(false);
-                      }
-                    }}
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity
-                    style={[styles.addCategoryBtn, !newCategoryText.trim() && styles.addCategoryBtnDisabled]}
-                    onPress={() => {
-                      const trimmed = newCategoryText.trim();
-                      if (trimmed && !categories.includes(trimmed) && !customCategories.includes(trimmed)) {
-                        setCustomCategories((prev) => [...prev, trimmed]);
-                        setCategory(trimmed);
-                        setNewCategoryText('');
-                        setIsCategoryOpen(false);
-                      }
-                    }}
-                    disabled={!newCategoryText.trim()}
+            {isCategoryOpen && (() => {
+              const search = categorySearch.toLowerCase();
+              const allCats = [...categories, ...customCategories];
+              const filteredCats = search ? allCats.filter((c) => c.toLowerCase().includes(search)) : allCats;
+              const canAddNew = newCategoryText.trim() && !allCats.some((c) => c.toLowerCase() === newCategoryText.trim().toLowerCase());
+              return (
+                <View style={styles.comboBoxDropdown}>
+                  <View style={styles.searchRow}>
+                    <TextInput
+                      style={styles.searchInput}
+                      value={categorySearch}
+                      onChangeText={setCategorySearch}
+                      placeholder="Search categories..."
+                      placeholderTextColor={theme.colors.textTertiary}
+                      autoFocus
+                    />
+                    {categorySearch ? (
+                      <TouchableOpacity onPress={() => setCategorySearch('')}>
+                        <Text style={styles.searchClear}>✕</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  <ScrollView
+                    style={styles.comboBoxList}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
                   >
-                    <Text style={styles.addCategoryBtnText}>+</Text>
-                  </TouchableOpacity>
+                    {filteredCats.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.comboBoxItem, category === cat && styles.comboBoxItemActive]}
+                        onPress={() => {
+                          setCategory(cat);
+                          setCategorySearch('');
+                          setIsCategoryOpen(false);
+                        }}
+                      >
+                        <Text style={styles.comboBoxItemIcon}>{getCategoryIcon(cat)}</Text>
+                        <Text style={[styles.comboBoxItemText, category === cat && styles.comboBoxItemTextActive]}>
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {filteredCats.length === 0 && !categorySearch && (
+                      <View style={styles.comboBoxItem}>
+                        <Text style={styles.comboBoxItemText}>No categories</Text>
+                      </View>
+                    )}
+                    {filteredCats.length === 0 && categorySearch && (
+                      <View style={styles.comboBoxItem}>
+                        <Text style={styles.comboBoxItemText}>No matches for "{categorySearch}"</Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                  <View style={styles.addCategoryRow}>
+                    <TextInput
+                      style={styles.addCategoryInput}
+                      value={newCategoryText}
+                      onChangeText={setNewCategoryText}
+                      placeholder="Add new category..."
+                      placeholderTextColor={theme.colors.textTertiary}
+                      onSubmitEditing={() => {
+                        const trimmed = newCategoryText.trim();
+                        if (trimmed && !allCats.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+                          setCustomCategories((prev) => [...prev, trimmed]);
+                          setCategory(trimmed);
+                          setNewCategoryText('');
+                          setCategorySearch('');
+                          setIsCategoryOpen(false);
+                        }
+                      }}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity
+                      style={[styles.addCategoryBtn, !newCategoryText.trim() && styles.addCategoryBtnDisabled]}
+                      onPress={() => {
+                        const trimmed = newCategoryText.trim();
+                        if (trimmed && !allCats.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+                          setCustomCategories((prev) => [...prev, trimmed]);
+                          setCategory(trimmed);
+                          setNewCategoryText('');
+                          setCategorySearch('');
+                          setIsCategoryOpen(false);
+                        }
+                      }}
+                      disabled={!newCategoryText.trim() || !canAddNew}
+                    >
+                      <Text style={styles.addCategoryBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            })()}
           </View>
 
           {/* Time */}
@@ -771,8 +859,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       returnKeyType="done"
                       onSubmitEditing={() => {
                         if (canAdd) {
-                          setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
-                          setPlace(newPlaceText.trim());
+                          const p = newPlaceText.trim();
+                          setCustomPlaces((prev) => [...prev, p]);
+                          setPlace(p);
+                          savePlace(p, address, userRegion);
                           setNewPlaceText('');
                           setIsPlaceOpen(false);
                         }
@@ -809,8 +899,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       <TouchableOpacity
                         style={styles.comboBoxItem}
                         onPress={() => {
-                          setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
-                          setPlace(newPlaceText.trim());
+                          const p = newPlaceText.trim();
+                          setCustomPlaces((prev) => [...prev, p]);
+                          setPlace(p);
+                          savePlace(p, address, userRegion);
                           setNewPlaceText('');
                           setIsPlaceOpen(false);
                         }}
@@ -841,6 +933,174 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             />
           </View>
 
+          {/* Extra Locations (Location 2, 3, …) */}
+          {extraLocations.map((loc, idx) => {
+            const allPlaces = [...effectivePlaces, ...customPlaces];
+            const search = loc.placeSearch.toLowerCase();
+            const filtered = search ? allPlaces.filter((p) => p.toLowerCase().includes(search)) : allPlaces;
+            const canAdd = loc.placeSearch.trim() && !allPlaces.some((p) => p.toLowerCase() === loc.placeSearch.trim().toLowerCase());
+            const updateLoc = (patch: Partial<ExtraLocRow>) =>
+              setExtraLocations((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+            return (
+              <View key={idx} style={styles.section}>
+                <View style={styles.locationHeader}>
+                  <Text style={styles.label}>Location {idx + 2}</Text>
+                  <TouchableOpacity onPress={() => {
+                    setOpenExtraDropdownIdx(null);
+                    setExtraLocations((prev) => prev.filter((_, i) => i !== idx));
+                  }}>
+                    <Text style={styles.removeLocationBtn}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* Place combobox */}
+                <View style={styles.placeComboRow}>
+                  <TouchableOpacity
+                    style={[styles.comboBox, openExtraDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
+                    onPress={() => setOpenExtraDropdownIdx(openExtraDropdownIdx === idx ? null : idx)}
+                  >
+                    <View style={styles.comboBoxValue}>
+                      {loc.place ? <Text style={styles.comboBoxText}>{loc.place}</Text> : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
+                    </View>
+                    <Text style={styles.comboBoxArrow}>{openExtraDropdownIdx === idx ? '▲' : '▼'}</Text>
+                  </TouchableOpacity>
+                  {loc.place ? (
+                    <TouchableOpacity onPress={() => updateLoc({ place: '', address: '' })}>
+                      <Text style={styles.searchClear}>✕</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {openExtraDropdownIdx === idx && (
+                  <View style={styles.comboBoxDropdown}>
+                    <View style={styles.searchRow}>
+                      <TextInput
+                        style={styles.searchInput}
+                        value={loc.placeSearch}
+                        onChangeText={(t) => updateLoc({ placeSearch: t })}
+                        placeholder="Search or add place..."
+                        placeholderTextColor={theme.colors.textTertiary}
+                        returnKeyType="done"
+                        autoFocus
+                        onSubmitEditing={() => {
+                          if (canAdd) {
+                            const p = loc.placeSearch.trim();
+                            setCustomPlaces((prev) => [...prev, p]);
+                            updateLoc({ place: p, placeSearch: '' });
+                            savePlace(p, loc.address, userRegion);
+                            setOpenExtraDropdownIdx(null);
+                          }
+                        }}
+                      />
+                      {loc.placeSearch ? <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}><Text style={styles.searchClear}>✕</Text></TouchableOpacity> : null}
+                    </View>
+                    <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
+                      {filtered.map((p) => (
+                        <TouchableOpacity key={p} style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
+                          onPress={() => { updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '' }); setOpenExtraDropdownIdx(null); }}>
+                          <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      {canAdd && (
+                        <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
+                          const p = loc.placeSearch.trim();
+                          setCustomPlaces((prev) => [...prev, p]);
+                          updateLoc({ place: p, placeSearch: '' });
+                          savePlace(p, loc.address, userRegion);
+                          setOpenExtraDropdownIdx(null);
+                        }}>
+                          <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
+                        </TouchableOpacity>
+                      )}
+                      {filtered.length === 0 && !canAdd && <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>}
+                    </ScrollView>
+                  </View>
+                )}
+                <TextInput
+                  style={[styles.input, { marginTop: theme.spacing.sm }]}
+                  value={loc.address}
+                  onChangeText={(t) => updateLoc({ address: t })}
+                  placeholder="Address"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+                <TouchableOpacity
+                  style={[styles.input, styles.dateTrigger, { marginTop: theme.spacing.sm }]}
+                  onPress={() => setDatePickerLocIdx(idx)}
+                >
+                  <Text style={loc.eventDate ? styles.dateTriggerText : styles.dateTriggerPlaceholder}>
+                    {loc.eventDate || 'Select Date (if different)'}
+                  </Text>
+                  <Text>📅</Text>
+                </TouchableOpacity>
+                {/* Start time */}
+                <Text style={[styles.label, { marginTop: theme.spacing.sm }]}>Start Time</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <TextInput style={styles.timeInput} value={loc.startHour} onChangeText={(t) => updateLoc({ startHour: t.replace(/\D/g,'').slice(0,2) })} placeholder="--" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} textAlign="center" />
+                  <Text style={styles.colon}>:</Text>
+                  <TextInput style={styles.timeInput} value={loc.startMin} onChangeText={(t) => updateLoc({ startMin: t.replace(/\D/g,'').slice(0,2) })} placeholder="--" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} textAlign="center" />
+                  <View style={styles.periodToggle}>
+                    <TouchableOpacity onPress={() => updateLoc({ startPeriod: 'AM' })} style={[styles.periodBtn, loc.startPeriod === 'AM' && styles.periodBtnActive]}>
+                      <Text style={[styles.periodText, loc.startPeriod === 'AM' && styles.periodTextActive]}>AM</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => updateLoc({ startPeriod: 'PM' })} style={[styles.periodBtn, loc.startPeriod === 'PM' && styles.periodBtnActive]}>
+                      <Text style={[styles.periodText, loc.startPeriod === 'PM' && styles.periodTextActive]}>PM</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {/* Duration quick-select */}
+                <View style={[styles.durationRow, { marginTop: theme.spacing.xs }]}>
+                  {[1, 2, 3, 4].map((hrs) => {
+                    const applyLocDuration = () => {
+                      const h = parseInt(loc.startHour) || 0;
+                      const m = parseInt(loc.startMin) || 0;
+                      if (!loc.startHour && !loc.startMin) return;
+                      let startH24 = h;
+                      if (loc.startPeriod === 'PM' && h !== 12) startH24 += 12;
+                      if (loc.startPeriod === 'AM' && h === 12) startH24 = 0;
+                      let totalMins = (startH24 * 60 + m + hrs * 60) % (24 * 60);
+                      const endH24 = Math.floor(totalMins / 60);
+                      const endM = totalMins % 60;
+                      let endH12 = endH24 % 12;
+                      if (endH12 === 0) endH12 = 12;
+                      updateLoc({ endHour: endH12.toString(), endMin: endM.toString().padStart(2, '0'), endPeriod: endH24 >= 12 ? 'PM' : 'AM' });
+                    };
+                    return (
+                      <TouchableOpacity key={hrs} style={styles.durationBtn} onPress={applyLocDuration}>
+                        <Text style={styles.durationBtnText}>{hrs} {hrs === 1 ? 'hr' : 'hrs'}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {/* End time */}
+                <Text style={[styles.label, { marginTop: theme.spacing.sm }]}>End Time</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs }}>
+                  <TextInput style={styles.timeInput} value={loc.endHour} onChangeText={(t) => updateLoc({ endHour: t.replace(/\D/g,'').slice(0,2) })} placeholder="--" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} textAlign="center" />
+                  <Text style={styles.colon}>:</Text>
+                  <TextInput style={styles.timeInput} value={loc.endMin} onChangeText={(t) => updateLoc({ endMin: t.replace(/\D/g,'').slice(0,2) })} placeholder="--" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} textAlign="center" />
+                  <View style={styles.periodToggle}>
+                    <TouchableOpacity onPress={() => updateLoc({ endPeriod: 'AM' })} style={[styles.periodBtn, loc.endPeriod === 'AM' && styles.periodBtnActive]}>
+                      <Text style={[styles.periodText, loc.endPeriod === 'AM' && styles.periodTextActive]}>AM</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => updateLoc({ endPeriod: 'PM' })} style={[styles.periodBtn, loc.endPeriod === 'PM' && styles.periodBtnActive]}>
+                      <Text style={[styles.periodText, loc.endPeriod === 'PM' && styles.periodTextActive]}>PM</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+
+          {/* Add location button */}
+          <TouchableOpacity
+            style={styles.addLocationBtn}
+            onPress={() => setExtraLocations((prev) => [...prev, {
+              place: '', address: '', eventDate: '',
+              startHour: '', startMin: '', startPeriod: 'AM',
+              endHour: '', endMin: '', endPeriod: 'PM',
+              placeSearch: '',
+            }])}
+          >
+            <Text style={styles.addLocationBtnText}>+ Add Location</Text>
+          </TouchableOpacity>
+
           {/* Phone */}
           <View style={styles.section}>
             <Text style={styles.label}>Phone</Text>
@@ -852,6 +1112,44 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               placeholderTextColor={theme.colors.textTertiary}
               keyboardType="phone-pad"
             />
+            {phoneCount >= 2 && (
+              <View style={[styles.locationHeader, { marginTop: theme.spacing.sm }]}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginTop: 0 }]}
+                  value={phone2}
+                  onChangeText={(t) => setPhone2(formatPhone(t))}
+                  placeholder="(555) 123-4567"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  keyboardType="phone-pad"
+                />
+                <TouchableOpacity onPress={() => { setPhone2(''); setPhone3(''); setPhoneCount(1); }}>
+                  <Text style={styles.removeLocationBtn}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {phoneCount >= 3 && (
+              <View style={[styles.locationHeader, { marginTop: theme.spacing.sm }]}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginTop: 0 }]}
+                  value={phone3}
+                  onChangeText={(t) => setPhone3(formatPhone(t))}
+                  placeholder="(555) 123-4567"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  keyboardType="phone-pad"
+                />
+                <TouchableOpacity onPress={() => { setPhone3(''); setPhoneCount(2); }}>
+                  <Text style={styles.removeLocationBtn}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {phoneCount < 3 && (
+              <TouchableOpacity
+                style={[styles.addLocationBtn, { marginHorizontal: 0, marginTop: theme.spacing.sm }]}
+                onPress={() => setPhoneCount(phoneCount + 1)}
+              >
+                <Text style={styles.addLocationBtnText}>+ Add Number</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Options */}
@@ -903,10 +1201,95 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         </ScrollView>
       </View>
     </Modal>
+
+    {/* Date picker modal for extra location date fields */}
+    <Modal
+      visible={datePickerLocIdx !== null}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setDatePickerLocIdx(null)}
+    >
+      <TouchableOpacity
+        style={styles.datePickerOverlay}
+        activeOpacity={1}
+        onPress={() => setDatePickerLocIdx(null)}
+      >
+        <TouchableOpacity activeOpacity={1}>
+          <View style={styles.datePickerSheet}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Date</Text>
+              <TouchableOpacity onPress={() => setDatePickerLocIdx(null)}>
+                <Text style={styles.datePickerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {datePickerLocIdx !== null && (
+              <Calendar
+                current={
+                  extraLocations[datePickerLocIdx]?.eventDate
+                    ? toISODateCreate(extraLocations[datePickerLocIdx].eventDate)
+                    : undefined
+                }
+                onDayPress={(day) => {
+                  const american = toAmericanDateCreate(day.dateString);
+                  setExtraLocations((prev) =>
+                    prev.map((r, i) => i === datePickerLocIdx ? { ...r, eventDate: american } : r)
+                  );
+                  setDatePickerLocIdx(null);
+                }}
+                markedDates={
+                  extraLocations[datePickerLocIdx]?.eventDate
+                    ? { [toISODateCreate(extraLocations[datePickerLocIdx].eventDate)]: { selected: true, selectedColor: theme.colors.purple } }
+                    : {}
+                }
+                theme={{
+                  calendarBackground: theme.colors.cardBackground,
+                  textSectionTitleColor: theme.colors.textSecondary,
+                  todayTextColor: '#22C55E',
+                  dayTextColor: theme.colors.textPrimary,
+                  textDisabledColor: theme.colors.disabled,
+                  arrowColor: theme.colors.primary,
+                  monthTextColor: theme.colors.textPrimary,
+                  selectedDayBackgroundColor: theme.colors.purple,
+                  selectedDayTextColor: '#FFFFFF',
+                }}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
+  locationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  removeLocationBtn: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  addLocationBtn: {
+    marginHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.md,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  addLocationBtnText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -1302,5 +1685,47 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.semibold,
+  },
+  dateTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateTriggerText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textPrimary,
+  },
+  dateTriggerPlaceholder: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  datePickerSheet: {
+    backgroundColor: theme.colors.cardBackground,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 24,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border || '#2A2A2A',
+  },
+  datePickerTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textPrimary,
+  },
+  datePickerClose: {
+    fontSize: 18,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: theme.spacing.xs,
   },
 });

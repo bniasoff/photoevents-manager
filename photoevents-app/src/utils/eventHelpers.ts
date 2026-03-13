@@ -94,10 +94,49 @@ export const searchEvents = (events: Event[], query: string): Event[] => {
 };
 
 /**
- * Sort events by date
+ * Expand events with multi-date locations into virtual continuation occurrences.
+ * The primary occurrence keeps its EventDate; each additional unique location date
+ * gets a copy with EventDate overridden so grouping/sorting helpers work unchanged.
+ * Display-only — copies share the same id, so tapping opens the same EventDetailModal.
  */
-export const sortEventsByDate = (events: Event[], order: 'asc' | 'desc' = 'asc'): Event[] => {
+export const expandEventsForDisplay = (events: Event[]): Event[] => {
+  const result: Event[] = [];
+  events.forEach(event => {
+    const primaryDate = event.EventDate?.slice(0, 10) ?? '';
+    const otherDates = [...new Set(
+      (event.locations ?? [])
+        .map(loc => loc.eventDate)
+        .filter((d): d is string => !!d && d !== primaryDate)
+    )];
+
+    // Primary occurrence
+    result.push({ ...event, _isContinuation: false, _continuationDates: otherDates });
+
+    // One continuation occurrence per extra date
+    otherDates.forEach(date => {
+      result.push({
+        ...event,
+        EventDate: date + 'T12:00:00',  // override for grouping
+        _isContinuation: true,
+        _continuationFromDate: primaryDate,
+        _continuationDates: [],
+      });
+    });
+  });
+  return result;
+};
+
+/**
+ * Sort events by date or name
+ */
+export const sortEventsByDate = (events: Event[], order: 'asc' | 'desc' | 'name-asc' | 'name-desc' = 'asc'): Event[] => {
   return [...events].sort((a, b) => {
+    if (order === 'name-asc' || order === 'name-desc') {
+      const nameA = (a.Name || '').toLowerCase();
+      const nameB = (b.Name || '').toLowerCase();
+      const cmp = nameA.localeCompare(nameB);
+      return order === 'name-asc' ? cmp : -cmp;
+    }
     const dateA = new Date(a.EventDate).getTime();
     const dateB = new Date(b.EventDate).getTime();
     return order === 'asc' ? dateA - dateB : dateB - dateA;

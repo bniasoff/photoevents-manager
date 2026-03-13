@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -92,6 +92,109 @@ const generateICS = (events: Event[]): string => {
   return ics;
 };
 
+/**
+ * Build the markedDates object from a list of events and Hebrew dates.
+ * Extracted so it can be called after event edits without a full network reload.
+ */
+const buildMarks = (
+  eventsList: Event[],
+  hebrewDates: Record<string, { title: string }>
+): any => {
+  const marks: any = {};
+
+  // Hebrew dates
+  Object.keys(hebrewDates).forEach((date) => {
+    marks[date] = {
+      customStyles: {
+        container: { backgroundColor: '#FFB84D', borderRadius: 18 },
+        text: { color: '#000000', fontWeight: 'bold' },
+      },
+      events: [],
+      isHebrewDate: true,
+      hebrewTitle: hebrewDates[date].title,
+    };
+  });
+
+  // Primary event dates
+  eventsList.forEach((event) => {
+    try {
+      const dateStr = event.EventDate.slice(0, 10);
+      const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
+      if (marks[date] && marks[date].isHebrewDate) {
+        marks[date].customStyles.container = {
+          backgroundColor: '#FF8C42', borderRadius: 18,
+          borderWidth: 2, borderColor: theme.colors.purple,
+        };
+        marks[date].customStyles.text = { color: '#FFFFFF', fontWeight: 'bold' };
+      } else if (!marks[date]) {
+        marks[date] = {
+          customStyles: {
+            container: { backgroundColor: theme.colors.purple, borderRadius: 18 },
+            text: { color: '#FFFFFF', fontWeight: 'bold' },
+          },
+          events: [],
+        };
+      }
+      marks[date].events.push(event);
+    } catch (err) {
+      console.error('Error parsing date:', err);
+    }
+  });
+
+  // Continuation dates from locations
+  eventsList.forEach((event) => {
+    const primaryDate = event.EventDate?.slice(0, 10) ?? '';
+    (event.locations ?? []).forEach((loc) => {
+      if (!loc.eventDate || loc.eventDate === primaryDate) return;
+      const date = loc.eventDate;
+      if (!marks[date]) {
+        marks[date] = {
+          customStyles: {
+            container: { backgroundColor: theme.colors.purple, borderRadius: 18 },
+            text: { color: '#FFFFFF', fontWeight: 'bold' },
+          },
+          events: [],
+        };
+      } else if (marks[date].isHebrewDate) {
+        marks[date].customStyles.container = {
+          backgroundColor: '#FF8C42', borderRadius: 18,
+          borderWidth: 2, borderColor: theme.colors.purple,
+        };
+        marks[date].customStyles.text = { color: '#FFFFFF', fontWeight: 'bold' };
+      }
+      if (!marks[date].events.find((e: Event) => e.id === event.id)) {
+        marks[date].events.push({
+          ...event,
+          EventDate: date + 'T12:00:00',  // override so modal shows the continuation date
+          _isContinuation: true,
+          _continuationFromDate: primaryDate,
+          _continuationDates: [],
+        });
+      }
+    });
+  });
+
+  // Today highlight
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  if (marks[todayStr]) {
+    marks[todayStr].customStyles.container = {
+      ...marks[todayStr].customStyles.container,
+      borderWidth: 3,
+      borderColor: '#22C55E',
+    };
+  } else {
+    marks[todayStr] = {
+      customStyles: {
+        container: { backgroundColor: '#22C55E', borderRadius: 18 },
+        text: { color: '#FFFFFF', fontWeight: 'bold' },
+      },
+      events: [],
+    };
+  }
+
+  return marks;
+};
+
 export const CalendarScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -113,6 +216,7 @@ export const CalendarScreen: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [calendarKey, setCalendarKey] = useState(0);
   const [yearPickerVisible, setYearPickerVisible] = useState(false);
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
 
   const loadHebrewDates = async () => {
     try {
@@ -135,69 +239,7 @@ export const CalendarScreen: React.FC = () => {
       // Load Hebrew dates
       const hebrewDates = await loadHebrewDates();
 
-      // Create marked dates object
-      const marks: any = {};
-
-      // First, add Hebrew dates with gold/orange color
-      Object.keys(hebrewDates).forEach((date) => {
-        marks[date] = {
-          customStyles: {
-            container: {
-              backgroundColor: '#FFB84D', // Gold/orange for Hebrew holidays
-              borderRadius: 18,
-            },
-            text: {
-              color: '#000000',
-              fontWeight: 'bold',
-            },
-          },
-          events: [],
-          isHebrewDate: true,
-          hebrewTitle: hebrewDates[date].title,
-        };
-      });
-
-      // Then, add event dates - if date already has Hebrew date, use mixed color
-      sorted.forEach((event) => {
-        try {
-          // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
-          const dateStr = event.EventDate.slice(0, 10);
-          const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
-
-          if (marks[date] && marks[date].isHebrewDate) {
-            // Date has both Hebrew holiday and events - use gradient/striped color
-            marks[date].customStyles.container = {
-              backgroundColor: '#FF8C42', // Orange blend for dates with both
-              borderRadius: 18,
-              borderWidth: 2,
-              borderColor: theme.colors.purple,
-            };
-            marks[date].customStyles.text = {
-              color: '#FFFFFF',
-              fontWeight: 'bold',
-            };
-          } else if (!marks[date]) {
-            // Date has only events
-            marks[date] = {
-              customStyles: {
-                container: {
-                  backgroundColor: theme.colors.purple,
-                  borderRadius: 18,
-                },
-                text: {
-                  color: '#FFFFFF',
-                  fontWeight: 'bold',
-                },
-              },
-              events: [],
-            };
-          }
-          marks[date].events.push(event);
-        } catch (err) {
-          console.error('Error parsing date:', err);
-        }
-      });
-      setMarkedDates(marks);
+      setMarkedDates(buildMarks(sorted, hebrewDates));
 
       // Load events for selected date
       updateEventsForDate(selectedDate, sorted);
@@ -210,14 +252,31 @@ export const CalendarScreen: React.FC = () => {
   };
 
   const updateEventsForDate = (date: string, eventsList: Event[]) => {
-    const eventsForDate = eventsList.filter((event) => {
+    const eventsForDate: Event[] = [];
+    eventsList.forEach((event) => {
       try {
-        // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
-        const dateStr = event.EventDate.slice(0, 10);
-        const eventDate = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
-        return eventDate === date;
+        const primaryDate = format(parseISO(event.EventDate.slice(0, 10) + 'T12:00:00'), 'yyyy-MM-dd');
+        if (primaryDate === date) {
+          // Primary occurrence — collect other location dates for badge
+          const otherDates = (event.locations ?? [])
+            .map((l) => l.eventDate)
+            .filter((d): d is string => !!d && d !== primaryDate);
+          eventsForDate.push({ ...event, _isContinuation: false, _continuationDates: otherDates });
+          return;
+        }
+        // Check if any location falls on this date
+        const matchingLoc = (event.locations ?? []).find((loc) => loc.eventDate === date);
+        if (matchingLoc) {
+          eventsForDate.push({
+            ...event,
+            EventDate: date + 'T12:00:00',  // override so modal shows the continuation date
+            _isContinuation: true,
+            _continuationFromDate: primaryDate,
+            _continuationDates: [],
+          });
+        }
       } catch {
-        return false;
+        // skip unparseable dates
       }
     });
     setEventsOnSelectedDate(eventsForDate);
@@ -231,6 +290,17 @@ export const CalendarScreen: React.FC = () => {
     const sub = DeviceEventEmitter.addListener('preferencesChanged', loadEvents);
     return () => sub.remove();
   }, []);
+
+  const phoneEvents = useMemo(() => {
+    const map: Record<string, Event[]> = {};
+    events.forEach((e) => {
+      if (e.Phone) {
+        if (!map[e.Phone]) map[e.Phone] = [];
+        map[e.Phone].push(e);
+      }
+    });
+    return map;
+  }, [events]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -268,6 +338,14 @@ export const CalendarScreen: React.FC = () => {
     setYearPickerVisible(false);
   };
 
+  const handleMonthSelect = (monthIndex: number) => {
+    const year = currentMonth.slice(0, 4);
+    const newMonth = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+    setCurrentMonth(newMonth);
+    setCalendarKey((k) => k + 1);
+    setMonthPickerVisible(false);
+  };
+
   const MONTH_NAMES = [
     'January','February','March','April','May','June',
     'July','August','September','October','November','December',
@@ -288,19 +366,27 @@ export const CalendarScreen: React.FC = () => {
   };
 
   const handleEventUpdate = (updatedEvent: Event) => {
-    setEvents((prevEvents) =>
-      prevEvents.map((event) =>
-        getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
-      )
-    );
-    // Update events for selected date
-    updateEventsForDate(selectedDate, events.map((event) =>
+    const updatedEvents = events.map((event) =>
       getEventId(event) === getEventId(updatedEvent) ? updatedEvent : event
-    ));
+    );
+    setEvents(updatedEvents);
+    setMarkedDates(buildMarks(updatedEvents, hebrewDatesMap));
+    updateEventsForDate(selectedDate, updatedEvents);
   };
 
-  const handleEventCreated = () => {
-    loadEvents();
+  const handleEventCreated = (newEvent: Event) => {
+    loadEvents().then(() => {
+      // After reload, patch CalendarEventId back into both arrays in case schema
+      // cache omitted it. eventsOnSelectedDate is what EventCard/EventDetailModal receive.
+      if (newEvent.CalendarEventId) {
+        const patchCalId = (e: Event) =>
+          getEventId(e) === getEventId(newEvent)
+            ? { ...e, CalendarEventId: newEvent.CalendarEventId }
+            : e;
+        setEvents((prev) => prev.map(patchCalId));
+        setEventsOnSelectedDate((prev) => prev.map(patchCalId));
+      }
+    });
   };
 
   const handleEventLongPress = (event: Event) => {
@@ -328,6 +414,7 @@ export const CalendarScreen: React.FC = () => {
                 (e) => getEventId(e) !== getEventId(actionMenuEvent)
               );
               setEvents(updatedEvents);
+              setMarkedDates(buildMarks(updatedEvents, hebrewDatesMap));
               updateEventsForDate(selectedDate, updatedEvents);
 
               // Close menu
@@ -376,33 +463,7 @@ export const CalendarScreen: React.FC = () => {
       setEvents(sorted);
 
       // Rebuild marked dates with fresh events
-      const marks: any = {};
-      sorted.forEach((event) => {
-        try {
-          // Extract just the date part (YYYY-MM-DD) in case it has time/timezone
-          const dateStr = event.EventDate.slice(0, 10);
-          const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
-          if (!marks[date]) {
-            marks[date] = {
-              customStyles: {
-                container: {
-                  backgroundColor: theme.colors.purple,
-                  borderRadius: 18,
-                },
-                text: {
-                  color: '#FFFFFF',
-                  fontWeight: 'bold',
-                },
-              },
-              events: [],
-            };
-          }
-          marks[date].events.push(event);
-        } catch (err) {
-          console.error('Error parsing date:', err);
-        }
-      });
-      setMarkedDates(marks);
+      setMarkedDates(buildMarks(sorted, hebrewDatesMap));
 
       // Change selected date to the new date and update displayed events
       setSelectedDate(newDateString);
@@ -460,13 +521,14 @@ export const CalendarScreen: React.FC = () => {
   }
 
   // Prepare marked dates with selection
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const markedDatesWithSelection = {
     ...markedDates,
     [selectedDate]: {
       ...markedDates[selectedDate],
       customStyles: {
         container: {
-          backgroundColor: theme.colors.primary,
+          backgroundColor: selectedDate === todayStr ? '#16A34A' : theme.colors.primary,
           borderRadius: 18,
         },
         text: {
@@ -500,9 +562,11 @@ export const CalendarScreen: React.FC = () => {
           enableSwipeMonths={true}
           renderHeader={() => (
             <View style={styles.calendarHeader}>
-              <Text style={styles.calendarHeaderMonth}>
-                {MONTH_NAMES[currentMonthIndex]}{'  '}
-              </Text>
+              <TouchableOpacity onPress={() => setMonthPickerVisible(true)}>
+                <Text style={styles.calendarHeaderMonth}>
+                  {MONTH_NAMES[currentMonthIndex]} ▾{'  '}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => setYearPickerVisible(true)}>
                 <Text style={styles.calendarHeaderYear}>{currentYear} ▾</Text>
               </TouchableOpacity>
@@ -511,7 +575,7 @@ export const CalendarScreen: React.FC = () => {
           theme={{
             calendarBackground: theme.colors.backgroundSecondary,
             textSectionTitleColor: theme.colors.textSecondary,
-            todayTextColor: theme.colors.primary,
+            todayTextColor: '#22C55E',
             dayTextColor: theme.colors.textPrimary,
             textDisabledColor: theme.colors.disabled,
             arrowColor: theme.colors.primary,
@@ -557,6 +621,43 @@ export const CalendarScreen: React.FC = () => {
                     ]}
                   >
                     {year}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Month Picker Modal */}
+        <Modal
+          visible={monthPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMonthPickerVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.yearPickerOverlay}
+            activeOpacity={1}
+            onPress={() => setMonthPickerVisible(false)}
+          >
+            <View style={styles.yearPickerContainer}>
+              <Text style={styles.yearPickerTitle}>Select Month</Text>
+              {MONTH_NAMES.map((name, index) => (
+                <TouchableOpacity
+                  key={name}
+                  style={[
+                    styles.yearPickerItem,
+                    index === currentMonthIndex && styles.yearPickerItemActive,
+                  ]}
+                  onPress={() => handleMonthSelect(index)}
+                >
+                  <Text
+                    style={[
+                      styles.yearPickerItemText,
+                      index === currentMonthIndex && styles.yearPickerItemTextActive,
+                    ]}
+                  >
+                    {name}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -621,11 +722,17 @@ export const CalendarScreen: React.FC = () => {
           <View style={styles.eventsList}>
             {eventsOnSelectedDate.map((event) => (
               <EventCard
-                key={getEventId(event)}
+                key={`${getEventId(event)}-${event._isContinuation ? 'cont' : 'main'}`}
                 event={event}
                 onPress={() => handleEventPress(event)}
                 onLongPress={handleEventLongPress}
                 onUpdate={handleEventUpdate}
+                recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                onRelatedEventPress={handleEventPress}
+                isContinuation={!!event._isContinuation}
+                continuationFromDate={event._continuationFromDate}
+                continuationDates={event._continuationDates}
               />
             ))}
           </View>

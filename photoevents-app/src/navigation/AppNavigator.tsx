@@ -62,7 +62,13 @@ export const AppNavigator: React.FC = () => {
               marginBottom: 4,
             },
           }}
+          initialRouteName="Calendar"
         >
+          <Tab.Screen
+            name="Calendar"
+            component={CalendarScreen}
+            options={{ tabBarIcon: ({ color }) => <TabIcon emoji="📆" color={color} /> }}
+          />
           <Tab.Screen
             name="All Events"
             component={AllEventsScreen}
@@ -82,11 +88,6 @@ export const AppNavigator: React.FC = () => {
             name="By Status"
             component={ByStatusScreen}
             options={{ tabBarIcon: ({ color }) => <TabIcon emoji="⚡" color={color} /> }}
-          />
-          <Tab.Screen
-            name="Calendar"
-            component={CalendarScreen}
-            options={{ tabBarIcon: ({ color }) => <TabIcon emoji="📆" color={color} /> }}
           />
           <Tab.Screen
             name="Reports"

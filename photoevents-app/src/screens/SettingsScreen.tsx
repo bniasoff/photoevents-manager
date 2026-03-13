@@ -29,6 +29,14 @@ import {
   SortOrder,
   getSortOrderPreference,
   setSortOrderPreference,
+  UserLocation,
+  getUserLocationPreference,
+  setUserLocationPreference,
+  ReminderMinutes,
+  getReminderEnabled,
+  setReminderEnabled,
+  getReminderMinutes,
+  setReminderMinutes,
 } from '../services/navigationPreference';
 import { theme } from '../theme/theme';
 
@@ -74,26 +82,35 @@ interface SettingsScreenProps {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [reminderEnabled, setReminderEnabledState] = useState(false);
+  const [reminderMinutes, setReminderMinutesState] = useState<ReminderMinutes>(30);
   const [isCheckingGoogle, setIsCheckingGoogle] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [navApp, setNavApp] = useState<NavApp>('waze');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [userLocation, setUserLocation] = useState<UserLocation>('lakewood');
 
   const googleConnected = !!(authStatus?.authenticated && authStatus?.hasRefreshToken);
 
   const loadStatuses = async () => {
     setIsCheckingGoogle(true);
     try {
-      const [status, notif, nav, sort] = await Promise.all([
+      const [status, notif, nav, sort, loc, remEnabled, remMins] = await Promise.all([
         getAuthStatus(),
         areNotificationsEnabled(),
         getNavAppPreference(),
         getSortOrderPreference(),
+        getUserLocationPreference(),
+        getReminderEnabled(),
+        getReminderMinutes(),
       ]);
       setAuthStatus(status);
       setNotificationsEnabled(notif);
       setNavApp(nav);
       setSortOrder(sort);
+      setUserLocation(loc);
+      setReminderEnabledState(remEnabled);
+      setReminderMinutesState(remMins);
     } finally {
       setIsCheckingGoogle(false);
     }
@@ -108,6 +125,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose
     await setSortOrderPreference(order);
     setSortOrder(order);
     DeviceEventEmitter.emit('preferencesChanged');
+  };
+
+  const handleLocationSelect = async (loc: UserLocation) => {
+    await setUserLocationPreference(loc);
+    setUserLocation(loc);
+  };
+
+  const handleReminderToggle = async () => {
+    if (!reminderEnabled) {
+      // Request permissions first if turning on
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        Alert.alert('Permissions Required', 'Please enable notifications in your device settings to use reminders.');
+        return;
+      }
+    }
+    const next = !reminderEnabled;
+    await setReminderEnabled(next);
+    setReminderEnabledState(next);
+  };
+
+  const handleReminderMinutes = async (mins: ReminderMinutes) => {
+    await setReminderMinutes(mins);
+    setReminderMinutesState(mins);
   };
 
   useEffect(() => {
@@ -368,6 +409,163 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose
               </View>
               {sortOrder === 'desc' && <Text style={styles.checkmark}>✓</Text>}
             </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => handleSortOrderSelect('name-asc')}
+            >
+              <Text style={styles.rowIcon}>🔤</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Name A → Z</Text>
+                <Text style={styles.rowValue}>Alphabetical order</Text>
+              </View>
+              {sortOrder === 'name-asc' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => handleSortOrderSelect('name-desc')}
+            >
+              <Text style={styles.rowIcon}>🔤</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Name Z → A</Text>
+                <Text style={styles.rowValue}>Reverse alphabetical order</Text>
+              </View>
+              {sortOrder === 'name-desc' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+          </View>
+
+          {/* ── My Location ── */}
+          <Text style={styles.sectionTitle}>MY LOCATION</Text>
+          <View style={styles.section}>
+            <View style={styles.row}>
+              <Text style={styles.rowIcon}>📍</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Venue area</Text>
+                <Text style={styles.rowValue}>Filters the place dropdown to nearby venues</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('lakewood')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Lakewood Area</Text>
+                <Text style={styles.rowValue}>Lakewood, Toms River, Jackson, Manchester NJ</Text>
+              </View>
+              {userLocation === 'lakewood' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('brooklyn')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Brooklyn</Text>
+                <Text style={styles.rowValue}>Boro Park, Flatbush, Williamsburg</Text>
+              </View>
+              {userLocation === 'brooklyn' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('crown_heights')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Crown Heights</Text>
+                <Text style={styles.rowValue}>Crown Heights, Brooklyn</Text>
+              </View>
+              {userLocation === 'crown_heights' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('monsey')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Monsey</Text>
+                <Text style={styles.rowValue}>Monsey, Spring Valley, New Square, Airmont NY</Text>
+              </View>
+              {userLocation === 'monsey' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('five_towns')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Five Towns</Text>
+                <Text style={styles.rowValue}>Lawrence, Cedarhurst, Woodmere, Inwood NY</Text>
+              </View>
+              {userLocation === 'five_towns' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('queens')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Queens</Text>
+                <Text style={styles.rowValue}>Kew Gardens Hills, Far Rockaway NY</Text>
+              </View>
+              {userLocation === 'queens' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('passaic')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Passaic</Text>
+                <Text style={styles.rowValue}>Passaic, Clifton NJ</Text>
+              </View>
+              {userLocation === 'passaic' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('teaneck')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Teaneck</Text>
+                <Text style={styles.rowValue}>Teaneck, Bergenfield NJ</Text>
+              </View>
+              {userLocation === 'teaneck' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity style={styles.row} onPress={() => handleLocationSelect('staten_island')}>
+              <Text style={styles.rowIcon}>🏙️</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Staten Island</Text>
+                <Text style={styles.rowValue}>Staten Island NY</Text>
+              </View>
+              {userLocation === 'staten_island' && <Text style={styles.checkmark}>✓</Text>}
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Notifications ── */}
+          <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
+          <View style={styles.section}>
+            <TouchableOpacity style={styles.row} onPress={handleReminderToggle}>
+              <Text style={styles.rowIcon}>🔔</Text>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>Event Reminders</Text>
+                <Text style={styles.rowValue}>Notify me before each event</Text>
+              </View>
+              <Text style={[styles.toggleText, { color: reminderEnabled ? theme.colors.primary : theme.colors.textTertiary }]}>
+                {reminderEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </TouchableOpacity>
+            {reminderEnabled && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.row}>
+                  <Text style={styles.rowIcon}>⏱️</Text>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowLabel}>Remind me</Text>
+                  </View>
+                </View>
+                {([10, 30, 60] as ReminderMinutes[]).map((mins) => (
+                  <React.Fragment key={mins}>
+                    <View style={styles.divider} />
+                    <TouchableOpacity style={styles.row} onPress={() => handleReminderMinutes(mins)}>
+                      <Text style={styles.rowIcon}>   </Text>
+                      <View style={styles.rowBody}>
+                        <Text style={styles.rowLabel}>
+                          {mins === 60 ? '1 hour before' : `${mins} minutes before`}
+                        </Text>
+                      </View>
+                      {reminderMinutes === mins && <Text style={styles.checkmark}>✓</Text>}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))}
+              </>
+            )}
           </View>
 
           {/* ── Navigation App ── */}
@@ -524,6 +722,12 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.border,
     marginLeft: 58,
+  },
+  toggleText: {
+    fontSize: 13,
+    fontWeight: theme.fontWeight.bold,
+    minWidth: 32,
+    textAlign: 'right',
   },
   checkmark: {
     fontSize: 18,

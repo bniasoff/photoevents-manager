@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Calendar } from 'react-native-calendars';
 import {
   Modal,
   View,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { openAddressInNavApp } from '../services/navigationPreference';
-import { Event } from '../types/Event';
+import { Event, EventLocation } from '../types/Event';
 import { theme } from '../theme/theme';
 import {
   getCategoryIcon,
@@ -25,12 +26,35 @@ import {
   getEventId,
 } from '../utils/eventHelpers';
 import { formatEventDateTime, formatTime, formatEventDate } from '../utils/dateHelpers';
-import { updateEventStatus, updateEvent, deleteEvent, fetchPlaces } from '../services/api';
+import { updateEventStatus, updateEvent, deleteEvent, fetchPlaces, saveEventLocations, savePlace } from '../services/api';
+import { getUserLocationPreference, getReminderEnabled, getReminderMinutes } from '../services/navigationPreference';
+import { schedulePreEventReminder } from '../services/notificationService';
 import {
   authenticateWithGoogle,
   exportToGoogleCalendar,
   isAuthenticated,
 } from '../services/googleCalendarBackendService';
+
+interface EditLocRow {
+  id?: string;
+  place: string;
+  address: string;
+  eventDate: string;       // MM/DD/YYYY (display format) or ''
+  startHour: string;
+  startMin: string;
+  startPeriod: 'AM' | 'PM';
+  endHour: string;
+  endMin: string;
+  endPeriod: 'AM' | 'PM';
+  placeSearch: string;
+}
+
+const parseTime24 = (t: string): { hour: string; min: string; period: 'AM' | 'PM' } => {
+  if (!t) return { hour: '', min: '', period: 'AM' };
+  const [hStr, mStr] = t.split(':');
+  const h = parseInt(hStr) || 0;
+  return { hour: (h % 12 || 12).toString(), min: mStr || '00', period: h >= 12 ? 'PM' : 'AM' };
+};
 
 interface EventDetailModalProps {
   event: Event | null;
@@ -55,6 +79,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [showExportedToast, setShowExportedToast] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [savedToastText, setSavedToastText] = useState('✓ Saved');
 
   // Helper functions for date format conversion
   const toAmericanDate = (isoDate: string): string => {
@@ -78,9 +103,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   // Edit mode state fields
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
-  const [editPlace, setEditPlace] = useState('');
-  const [editAddress, setEditAddress] = useState('');
+  const [editLocations, setEditLocations] = useState<EditLocRow[]>([]);
+  const [openDropdownIdx, setOpenDropdownIdx] = useState<number | null>(null);
   const [editPhone, setEditPhone] = useState('');
+  const [editPhone2, setEditPhone2] = useState('');
+  const [editPhone3, setEditPhone3] = useState('');
+  const [phoneCount, setPhoneCount] = useState(1);
   const [editInfo, setEditInfo] = useState('');
   const [editReferral, setEditReferral] = useState('');
   const [editEventDate, setEditEventDate] = useState('');
@@ -89,23 +117,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [editWeinman, setEditWeinman] = useState(false);
   const [editFeedback, setEditFeedback] = useState('');
   const [editRatings, setEditRatings] = useState<number | null>(null);
-  const [editStartHour, setEditStartHour] = useState('');
-  const [editStartMin, setEditStartMin] = useState('');
-  const [editStartPeriod, setEditStartPeriod] = useState<'AM' | 'PM'>('AM');
-  const [editEndHour, setEditEndHour] = useState('');
-  const [editEndMin, setEditEndMin] = useState('');
-  const [editEndPeriod, setEditEndPeriod] = useState<'AM' | 'PM'>('PM');
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
-  const [isPlaceOpen, setIsPlaceOpen] = useState(false);
-  const [newPlaceText, setNewPlaceText] = useState('');
+  const [categorySearch, setCategorySearch] = useState('');
   const [customPlaces, setCustomPlaces] = useState<string[]>([]);
   const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
+  const [userRegion, setUserRegion] = useState<string>('lakewood');
+  const [datePickerLocIdx, setDatePickerLocIdx] = useState<number | null>(null);
+  const [showMainDatePicker, setShowMainDatePicker] = useState(false);
 
   // Fetch places from database when modal opens
   React.useEffect(() => {
     if (visible) {
-      fetchPlaces().then((map) => {
-        if (Object.keys(map).length > 0) setDbPlaces(map);
+      getUserLocationPreference().then((region) => {
+        setUserRegion(region);
+        fetchPlaces(region).then((map) => {
+          setDbPlaces(map); // always set — even empty — so non-Lakewood regions don't fall back
+        });
       });
     }
   }, [visible]);
@@ -121,9 +148,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       // Initialize edit fields
       setEditName(event.Name || '');
       setEditCategory(event.Category || '');
-      setEditPlace(event.Place || '');
-      setEditAddress(event.Address || '');
       setEditPhone(event.Phone || '');
+      setEditPhone2(event.Phone2 || '');
+      setEditPhone3(event.Phone3 || '');
+      setPhoneCount(event.Phone3 ? 3 : event.Phone2 ? 2 : 1);
       setEditInfo(event.Info || '');
       setEditReferral(event.Referral || '');
       setEditEventDate(event.EventDate ? toAmericanDate(event.EventDate.slice(0, 10)) : '');
@@ -133,43 +161,59 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       setEditFeedback(event.Feedback || '');
       setEditRatings(event.Ratings || null);
 
-      // Parse Start time
-      if (event.Start) {
-        const [hour, min] = event.Start.split(':');
-        const h = parseInt(hour);
-        const isPM = h >= 12;
-        setEditStartHour((h % 12 || 12).toString());
-        setEditStartMin(min);
-        setEditStartPeriod(isPM ? 'PM' : 'AM');
+      // Initialize location rows from locations array (or fall back to old fields)
+      if (event.locations && event.locations.length > 0) {
+        const primaryAmericanDate = event.EventDate ? toAmericanDate(event.EventDate.slice(0, 10)) : '';
+        setEditLocations(event.locations.map((loc) => {
+          const s = parseTime24(loc.startTime);
+          const e = parseTime24(loc.endTime);
+          return {
+            id: loc.id, place: loc.place, address: loc.address,
+            eventDate: loc.eventDate ? toAmericanDate(loc.eventDate) : primaryAmericanDate,
+            startHour: s.hour, startMin: s.min, startPeriod: s.period,
+            endHour: e.hour, endMin: e.min, endPeriod: e.period,
+            placeSearch: '',
+          };
+        }));
       } else {
-        setEditStartHour('');
-        setEditStartMin('');
-        setEditStartPeriod('AM');
-      }
-
-      // Parse End time
-      if (event.End) {
-        const [hour, min] = event.End.split(':');
-        const h = parseInt(hour);
-        const isPM = h >= 12;
-        setEditEndHour((h % 12 || 12).toString());
-        setEditEndMin(min);
-        setEditEndPeriod(isPM ? 'PM' : 'AM');
-      } else {
-        setEditEndHour('');
-        setEditEndMin('');
-        setEditEndPeriod('PM');
+        const s = parseTime24(event.Start);
+        const e = parseTime24(event.End);
+        setEditLocations([{
+          place: event.Place || '', address: event.Address || '',
+          eventDate: event.EventDate ? toAmericanDate(event.EventDate.slice(0, 10)) : '',
+          startHour: s.hour, startMin: s.min, startPeriod: s.period,
+          endHour: e.hour, endMin: e.min, endPeriod: e.period,
+          placeSearch: '',
+        }]);
       }
     }
   }, [event]);
 
   if (!event || !localEvent) return null;
 
+  const CATEGORIES: string[] = [
+    'Bar Mitzvah', 'Bat Mitzvah', 'Vort', 'Bris', 'Pidyon Haben', 'School',
+    'Photoshoot', 'Wedding', 'CM', 'Parlor Meeting', 'Siyum', "L'Chaim",
+    'Advertisements', 'Beis Medrash', 'Birthday', 'Chanukas Habayis',
+    'Chumesh Mesiba', 'Chumesh Party', 'Conference', 'Dinner', 'Even Hapina',
+    'Hachnosas Sefer Torah', 'Kollel', 'Melava Malka', 'Opsherin', 'Presentation',
+    'Seudas Hodah', 'Sheva Brachos', 'Shiur', 'Vachtnact', 'Yeshiva', 'Yorzeit',
+  ];
+
   const status = getEventStatus(localEvent);
   const icon = getCategoryIcon(localEvent.Category);
   const charge = parseAmount(localEvent.Charge);
   const payment = parseAmount(localEvent.Payment);
   const balance = charge - payment;
+
+  // When this is a continuation occurrence, EventDate has been overridden to the continuation date.
+  // Use it to find the matching location so we can show the right schedule + highlight.
+  const viewDate = localEvent.EventDate?.slice(0, 10) ?? '';
+  const activeLoc = localEvent._isContinuation
+    ? (localEvent.locations ?? []).find((loc) => loc.eventDate === viewDate) ?? null
+    : (localEvent.locations ?? [])[0] ?? null;
+  const scheduleStart = (localEvent._isContinuation && activeLoc?.startTime) ? activeLoc.startTime : localEvent.Start;
+  const scheduleEnd   = (localEvent._isContinuation && activeLoc?.endTime)   ? activeLoc.endTime   : localEvent.End;
 
   const handleStatusToggle = async (
     field: 'Paid' | 'Ready' | 'Sent' | 'SimchaInitiative' | 'Projector' | 'Weinman',
@@ -257,10 +301,17 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       }
 
       setIsSaving(true);
-      const result = await exportToGoogleCalendar(localEvent);
+      const existingCalId = localEvent.CalendarEventId || undefined;
+      const { result, calendarEventId } = await exportToGoogleCalendar(localEvent, existingCalId);
       setIsSaving(false);
 
       if (result === 'success') {
+        // Save the new Google Calendar event ID back to the database
+        if (calendarEventId) {
+          const updated = await updateEvent(getEventId(localEvent), { CalendarEventId: calendarEventId });
+          setLocalEvent(updated);
+          onUpdate(updated);
+        }
         setShowExportedToast(true);
         setTimeout(() => setShowExportedToast(false), 3000);
       } else if (result === 'needsReauth') {
@@ -412,16 +463,18 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setIsCategoryOpen(false);
+    setCategorySearch('');
+    setOpenDropdownIdx(null);
     if (localEvent) {
-      // Reset all edit fields to current values
       setEditName(localEvent.Name || '');
       setEditCategory(localEvent.Category || '');
-      setEditPlace(localEvent.Place || '');
-      setEditAddress(localEvent.Address || '');
       setEditPhone(localEvent.Phone || '');
+      setEditPhone2(localEvent.Phone2 || '');
+      setEditPhone3(localEvent.Phone3 || '');
       setEditInfo(localEvent.Info || '');
       setEditReferral(localEvent.Referral || '');
-      setEditEventDate(localEvent.EventDate ? localEvent.EventDate.slice(0, 10) : '');
+      setEditEventDate(localEvent.EventDate ? toAmericanDate(localEvent.EventDate.slice(0, 10)) : '');
       setEditSimchaInitiative(localEvent.SimchaInitiative || false);
       setEditProjector(localEvent.Projector || false);
       setEditWeinman(localEvent.Weinman || false);
@@ -430,22 +483,29 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       setChargeText(Math.round(parseAmount(localEvent.Charge)).toString());
       setPaymentText(Math.round(parseAmount(localEvent.Payment)).toString());
 
-      // Reset time fields
-      if (localEvent.Start) {
-        const [hour, min] = localEvent.Start.split(':');
-        const h = parseInt(hour);
-        const isPM = h >= 12;
-        setEditStartHour((h % 12 || 12).toString());
-        setEditStartMin(min);
-        setEditStartPeriod(isPM ? 'PM' : 'AM');
-      }
-      if (localEvent.End) {
-        const [hour, min] = localEvent.End.split(':');
-        const h = parseInt(hour);
-        const isPM = h >= 12;
-        setEditEndHour((h % 12 || 12).toString());
-        setEditEndMin(min);
-        setEditEndPeriod(isPM ? 'PM' : 'AM');
+      // Reset location rows
+      if (localEvent.locations && localEvent.locations.length > 0) {
+        setEditLocations(localEvent.locations.map((loc) => {
+          const s = parseTime24(loc.startTime);
+          const e = parseTime24(loc.endTime);
+          return {
+            id: loc.id, place: loc.place, address: loc.address,
+            eventDate: loc.eventDate ? toAmericanDate(loc.eventDate) : '',
+            startHour: s.hour, startMin: s.min, startPeriod: s.period,
+            endHour: e.hour, endMin: e.min, endPeriod: e.period,
+            placeSearch: '',
+          };
+        }));
+      } else {
+        const s = parseTime24(localEvent.Start);
+        const e = parseTime24(localEvent.End);
+        setEditLocations([{
+          place: localEvent.Place || '', address: localEvent.Address || '',
+          eventDate: localEvent.EventDate ? toAmericanDate(localEvent.EventDate.slice(0, 10)) : '',
+          startHour: s.hour, startMin: s.min, startPeriod: s.period,
+          endHour: e.hour, endMin: e.min, endPeriod: e.period,
+          placeSearch: '',
+        }]);
       }
     }
   };
@@ -454,10 +514,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     if (!localEvent) return;
 
     const previousEvent = { ...localEvent };
-
-    // Check if address was changed
-    const addressChanged = editAddress.trim() !== (previousEvent.Address || '').trim();
-    const hasAddress = editAddress.trim().length > 0;
 
     // Convert time to 24-hour format
     const to24Hour = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
@@ -468,17 +524,34 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00`;
     };
 
-    const startTime = editStartHour ? to24Hour(editStartHour, editStartMin, editStartPeriod) : '';
-    const endTime = editEndHour ? to24Hour(editEndHour, editEndMin, editEndPeriod) : '';
+    // Build locations for saveEventLocations
+    const locationsToSave = editLocations.map((loc, i) => ({
+      place: loc.place.trim(),
+      address: loc.address.trim(),
+      eventDate: loc.eventDate ? toISODate(loc.eventDate) : '',
+      startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
+      endTime: loc.endHour ? to24Hour(loc.endHour, loc.endMin, loc.endPeriod) : '',
+      sortOrder: i,
+    }));
+
+    const firstLoc = locationsToSave[0];
+    const startTime = firstLoc?.startTime || '';
+    const endTime = firstLoc?.endTime || '';
 
     // Optimistic update
     const optimisticEvent = {
       ...localEvent,
       Name: editName.trim(),
       Category: editCategory,
-      Place: editPlace.trim(),
-      Address: editAddress.trim(),
+      Place: firstLoc?.place || '',
+      Address: firstLoc?.address || '',
+      Place2: locationsToSave[1]?.place || '',
+      Address2: locationsToSave[1]?.address || '',
+      Place3: locationsToSave[2]?.place || '',
+      Address3: locationsToSave[2]?.address || '',
       Phone: editPhone.trim(),
+      Phone2: editPhone2.trim(),
+      Phone3: editPhone3.trim(),
       Info: editInfo.trim(),
       Referral: editReferral.trim() || null,
       EventDate: toISODate(editEventDate),
@@ -491,20 +564,34 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       End: endTime,
       Charge: parseFloat(chargeText) || 0,
       Payment: parseFloat(paymentText) || 0,
+      locations: locationsToSave.map((loc, i) => ({
+        id: editLocations[i]?.id || '',
+        eventId: localEvent.id,
+        ...loc,
+      })) as EventLocation[],
     };
 
     setLocalEvent(optimisticEvent);
     setIsEditing(false);
+    setOpenDropdownIdx(null);
 
     try {
       setIsSaving(true);
 
+      // Save locations to relational table
+      const savedLocs = await saveEventLocations(getEventId(localEvent), locationsToSave);
+
       const updates = {
         Name: editName.trim(),
         Category: editCategory,
-        Place: editPlace.trim(),
-        Address: editAddress.trim(),
+        Place: firstLoc?.place || '',
+        Address: firstLoc?.address || '',
+        Place2: locationsToSave[1]?.place || '',
+        Address2: locationsToSave[1]?.address || '',
+        Place3: locationsToSave[2]?.place || '',
+        Address3: locationsToSave[2]?.address || '',
         Phone: editPhone.trim(),
+        Phone2: editPhone2.trim(),
         Info: editInfo.trim(),
         Referral: editReferral.trim() || null,
         EventDate: toISODate(editEventDate),
@@ -519,13 +606,51 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         Payment: parseFloat(paymentText) || 0,
       };
 
-      const updatedEvent = await updateEvent(getEventId(localEvent), updates);
+      let updatedEvent = await updateEvent(getEventId(localEvent), updates);
+      updatedEvent = { ...updatedEvent, locations: savedLocs };
       onUpdate(updatedEvent);
       setLocalEvent(updatedEvent);
 
+      // Schedule pre-event reminder if enabled
+      const [remEnabled, remMins] = await Promise.all([getReminderEnabled(), getReminderMinutes()]);
+      if (remEnabled) schedulePreEventReminder(updatedEvent, remMins);
+
+      let savedToastText = '✓ Saved';
+
+      // If previously exported to Google Calendar, replace the old calendar event
+      const existingCalId = localEvent.CalendarEventId || undefined;
+      if (existingCalId) {
+        try {
+          const authenticated = await isAuthenticated();
+          if (authenticated) {
+            const { result, calendarEventId, deleteWarning } = await exportToGoogleCalendar(updatedEvent, existingCalId);
+            if (result === 'success' && calendarEventId) {
+              updatedEvent = await updateEvent(getEventId(updatedEvent), { CalendarEventId: calendarEventId });
+              onUpdate(updatedEvent);
+              setLocalEvent(updatedEvent);
+              if (deleteWarning) {
+                savedToastText = '✓ Saved (old calendar entry not deleted!)';
+                console.warn('Delete failed:', deleteWarning);
+              } else {
+                savedToastText = '✓ Saved & Calendar Updated';
+              }
+            } else if (result === 'needsReauth') {
+              savedToastText = '✓ Saved (sign in to update calendar)';
+            } else {
+              savedToastText = '✓ Saved (calendar update failed)';
+            }
+          } else {
+            savedToastText = '✓ Saved (not signed in to Google)';
+          }
+        } catch (calErr) {
+          console.warn('Calendar re-export failed:', calErr);
+          savedToastText = '✓ Saved (calendar update failed)';
+        }
+      }
+
       // Show toast message
+      setSavedToastText(savedToastText);
       setShowSavedToast(true);
-      // Auto-hide after 3 seconds
       setTimeout(() => {
         setShowSavedToast(false);
       }, 3000);
@@ -543,7 +668,52 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
+  const addNewPart = (sameDate: boolean, sameLocation: boolean) => {
+    const last = editLocations[editLocations.length - 1];
+    setEditLocations((prev) => [
+      ...prev,
+      {
+        place:     sameLocation ? last.place   : '',
+        address:   sameLocation ? last.address : '',
+        eventDate: sameDate     ? last.eventDate : '',
+        startHour: '', startMin: '', startPeriod: 'AM' as const,
+        endHour:   '', endMin:   '', endPeriod:   'PM' as const,
+        placeSearch: '',
+      },
+    ]);
+  };
+
+  const showAddPartOptions = () => {
+    const last = editLocations[editLocations.length - 1];
+    const hasDate = !!last.eventDate;
+    const hasLocation = !!last.place;
+    Alert.alert(
+      'Add Part',
+      'Copy from the previous part?',
+      [
+        ...(hasDate && hasLocation ? [{
+          text: 'Same date & location',
+          onPress: () => addNewPart(true, true),
+        }] : []),
+        {
+          text: hasDate ? `Same date (${last.eventDate}), new location` : 'Same date, new location',
+          onPress: () => addNewPart(true, false),
+        },
+        ...(hasLocation ? [{
+          text: `New date, same location (${last.place})`,
+          onPress: () => addNewPart(false, true),
+        }] : []),
+        {
+          text: 'New date & location',
+          onPress: () => addNewPart(false, false),
+        },
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  };
+
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -628,7 +798,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         {showSavedToast && (
           <View style={styles.toastContainer}>
             <View style={styles.toast}>
-              <Text style={styles.toastText}>✓ Saved</Text>
+              <Text style={styles.toastText}>{savedToastText}</Text>
             </View>
           </View>
         )}
@@ -645,14 +815,84 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   placeholder="Event name"
                   placeholderTextColor={theme.colors.textTertiary}
                 />
-                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Date (MM/DD/YYYY)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editEventDate}
-                  onChangeText={setEditEventDate}
-                  placeholder="02/01/2026"
-                  placeholderTextColor={theme.colors.textTertiary}
-                />
+                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Date</Text>
+                <TouchableOpacity
+                  style={[styles.input, styles.dateTrigger]}
+                  onPress={() => setShowMainDatePicker(true)}
+                >
+                  <Text style={editEventDate ? styles.dateTriggerText : styles.dateTriggerPlaceholder}>
+                    {editEventDate || 'Select Date'}
+                  </Text>
+                  <Text>📅</Text>
+                </TouchableOpacity>
+
+                {/* Category picker */}
+                <Text style={[styles.sectionTitle, { marginTop: theme.spacing.sm }]}>Category</Text>
+                <TouchableOpacity
+                  style={[styles.comboBox, isCategoryOpen && styles.comboBoxOpen]}
+                  onPress={() => { setIsCategoryOpen(!isCategoryOpen); setOpenDropdownIdx(null); }}
+                >
+                  <View style={styles.comboBoxValue}>
+                    {editCategory ? (
+                      <>
+                        <Text style={styles.comboBoxIcon}>{getCategoryIcon(editCategory)}</Text>
+                        <Text style={styles.comboBoxText}>{editCategory}</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.comboBoxPlaceholder}>Select a category...</Text>
+                    )}
+                  </View>
+                  <Text style={styles.comboBoxArrow}>{isCategoryOpen ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+
+                {isCategoryOpen && (() => {
+                  const search = categorySearch.toLowerCase();
+                  const filtered = search
+                    ? CATEGORIES.filter((c) => c.toLowerCase().includes(search))
+                    : CATEGORIES;
+                  return (
+                    <View style={styles.comboBoxDropdown}>
+                      <View style={styles.searchRow}>
+                        <TextInput
+                          style={styles.searchInput}
+                          value={categorySearch}
+                          onChangeText={setCategorySearch}
+                          placeholder="Search categories..."
+                          placeholderTextColor={theme.colors.textTertiary}
+                          autoFocus
+                        />
+                        {categorySearch ? (
+                          <TouchableOpacity onPress={() => setCategorySearch('')}>
+                            <Text style={styles.searchClear}>✕</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
+                        {filtered.map((cat) => (
+                          <TouchableOpacity
+                            key={cat}
+                            style={[styles.comboBoxItem, editCategory === cat && styles.comboBoxItemActive]}
+                            onPress={() => {
+                              setEditCategory(cat);
+                              setCategorySearch('');
+                              setIsCategoryOpen(false);
+                            }}
+                          >
+                            <Text style={styles.comboBoxItemIcon}>{getCategoryIcon(cat)}</Text>
+                            <Text style={[styles.comboBoxItemText, editCategory === cat && styles.comboBoxItemTextActive]}>
+                              {cat}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                        {filtered.length === 0 && (
+                          <View style={styles.comboBoxItem}>
+                            <Text style={styles.comboBoxItemText}>No matches for "{categorySearch}"</Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  );
+                })()}
               </>
             ) : (
               <>
@@ -774,22 +1014,78 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact</Text>
             {isEditing ? (
-              <TextInput
-                style={styles.input}
-                value={editPhone}
-                onChangeText={setEditPhone}
-                placeholder="Phone number"
-                placeholderTextColor={theme.colors.textTertiary}
-                keyboardType="phone-pad"
-              />
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="Phone number"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  keyboardType="phone-pad"
+                />
+                {phoneCount >= 2 && (
+                  <View style={[styles.locationHeader, { marginTop: theme.spacing.sm }]}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginTop: 0, marginLeft: 0 }]}
+                      value={editPhone2}
+                      onChangeText={setEditPhone2}
+                      placeholder="Phone number"
+                      placeholderTextColor={theme.colors.textTertiary}
+                      keyboardType="phone-pad"
+                    />
+                    <TouchableOpacity onPress={() => { setEditPhone2(''); setEditPhone3(''); setPhoneCount(1); }}>
+                      <Text style={styles.removeLocationBtn}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {phoneCount >= 3 && (
+                  <View style={[styles.locationHeader, { marginTop: theme.spacing.sm }]}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginTop: 0, marginLeft: 0 }]}
+                      value={editPhone3}
+                      onChangeText={setEditPhone3}
+                      placeholder="Phone number"
+                      placeholderTextColor={theme.colors.textTertiary}
+                      keyboardType="phone-pad"
+                    />
+                    <TouchableOpacity onPress={() => { setEditPhone3(''); setPhoneCount(2); }}>
+                      <Text style={styles.removeLocationBtn}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {phoneCount < 3 && (
+                  <TouchableOpacity
+                    style={[styles.addLocationBtn, { marginTop: theme.spacing.sm }]}
+                    onPress={() => setPhoneCount(phoneCount + 1)}
+                  >
+                    <Text style={styles.addLocationBtnText}>+ Add Number</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             ) : (
-              localEvent.Phone && (
-                <TouchableOpacity onPress={handlePhonePress}>
-                  <Text style={styles.linkText}>
-                    📞 {formatPhoneNumber(localEvent.Phone)}
-                  </Text>
-                </TouchableOpacity>
-              )
+              <>
+                {localEvent.Phone && (
+                  <TouchableOpacity onPress={handlePhonePress}>
+                    <Text style={styles.linkText}>
+                      📞 {formatPhoneNumber(localEvent.Phone)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {localEvent.Phone2 && (
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${localEvent.Phone2!.replace(/\D/g, '')}`)}>
+                    <Text style={[styles.linkText, { marginTop: theme.spacing.xs }]}>
+                      📞 {formatPhoneNumber(localEvent.Phone2)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {localEvent.Phone3 && (
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${localEvent.Phone3!.replace(/\D/g, '')}`)}>
+                    <Text style={[styles.linkText, { marginTop: theme.spacing.xs }]}>
+                      📞 {formatPhoneNumber(localEvent.Phone3)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
 
@@ -798,126 +1094,249 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             <Text style={styles.sectionTitle}>Location</Text>
             {isEditing ? (
               <>
-                {/* Place Combo Box */}
-                <View style={styles.placeComboRow}>
-                  <TouchableOpacity
-                    style={[styles.comboBox, isPlaceOpen && styles.comboBoxOpen, styles.placeComboFlex]}
-                    onPress={() => setIsPlaceOpen(!isPlaceOpen)}
-                  >
-                    <View style={styles.comboBoxValue}>
-                      {editPlace ? (
-                        <Text style={styles.comboBoxText}>{editPlace}</Text>
-                      ) : (
-                        <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>
-                      )}
-                    </View>
-                    <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
-                  </TouchableOpacity>
-                  {editPlace ? (
-                    <TouchableOpacity onPress={() => { setEditPlace(''); setEditAddress(''); }}>
-                      <Text style={styles.searchClear}>✕</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
-                {/* Place Dropdown */}
-                {isPlaceOpen && (() => {
+                {editLocations.map((loc, idx) => {
                   const effectivePlaces = dbPlaces ? Object.keys(dbPlaces).sort() : [];
                   const effectiveAddresses = dbPlaces || {};
-                  const search = newPlaceText.toLowerCase();
                   const allPlaces = [...effectivePlaces, ...customPlaces];
-                  const filtered = search
-                    ? allPlaces.filter((p) => p.toLowerCase().includes(search))
-                    : allPlaces;
-                  const canAdd = newPlaceText.trim() && !allPlaces.some((p) => p.toLowerCase() === newPlaceText.trim().toLowerCase());
+                  const search = loc.placeSearch.toLowerCase();
+                  const filtered = search ? allPlaces.filter((p) => p.toLowerCase().includes(search)) : allPlaces;
+                  const canAdd = loc.placeSearch.trim() && !allPlaces.some((p) => p.toLowerCase() === loc.placeSearch.trim().toLowerCase());
+                  const updateLoc = (patch: Partial<EditLocRow>) =>
+                    setEditLocations((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
 
                   return (
-                    <View style={styles.comboBoxDropdown}>
-                      <View style={styles.searchRow}>
-                        <TextInput
-                          style={styles.searchInput}
-                          value={newPlaceText}
-                          onChangeText={setNewPlaceText}
-                          placeholder="Search or add place..."
-                          placeholderTextColor={theme.colors.textTertiary}
-                          returnKeyType="done"
-                          onSubmitEditing={() => {
-                            if (canAdd) {
-                              setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
-                              setEditPlace(newPlaceText.trim());
-                              setNewPlaceText('');
-                              setIsPlaceOpen(false);
-                            }
-                          }}
-                        />
-                        {newPlaceText ? (
-                          <TouchableOpacity onPress={() => setNewPlaceText('')}>
+                    <View key={idx} style={idx > 0 ? styles.locationBlock : undefined}>
+                      {/* Location header */}
+                      <View style={styles.locationHeader}>
+                        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.sm, marginBottom: 0 }]}>
+                          Location {idx + 1}
+                        </Text>
+                        {editLocations.length > 1 && (
+                          <TouchableOpacity onPress={() => {
+                            setOpenDropdownIdx(null);
+                            setEditLocations((prev) => prev.filter((_, i) => i !== idx));
+                          }}>
+                            <Text style={styles.removeLocationBtn}>✕</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* Place combobox */}
+                      <View style={styles.placeComboRow}>
+                        <TouchableOpacity
+                          style={[styles.comboBox, openDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
+                          onPress={() => setOpenDropdownIdx(openDropdownIdx === idx ? null : idx)}
+                        >
+                          <View style={styles.comboBoxValue}>
+                            {loc.place
+                              ? <Text style={styles.comboBoxText}>{loc.place}</Text>
+                              : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
+                          </View>
+                          <Text style={styles.comboBoxArrow}>{openDropdownIdx === idx ? '▲' : '▼'}</Text>
+                        </TouchableOpacity>
+                        {loc.place ? (
+                          <TouchableOpacity onPress={() => updateLoc({ place: '', address: '' })}>
                             <Text style={styles.searchClear}>✕</Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
-                      <ScrollView
-                        style={styles.comboBoxList}
-                        showsVerticalScrollIndicator={true}
-                        nestedScrollEnabled={true}
-                      >
-                        {filtered.map((p) => (
-                          <TouchableOpacity
-                            key={p}
-                            style={[styles.comboBoxItem, editPlace === p && styles.comboBoxItemActive]}
-                            onPress={() => {
-                              setEditPlace(p);
-                              if (effectiveAddresses[p]) setEditAddress(effectiveAddresses[p]);
-                              setNewPlaceText('');
-                              setIsPlaceOpen(false);
-                            }}
-                          >
-                            <Text style={[styles.comboBoxItemText, editPlace === p && styles.comboBoxItemTextActive]}>
-                              {p}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                        {canAdd && (
-                          <TouchableOpacity
-                            style={styles.comboBoxItem}
-                            onPress={() => {
-                              setCustomPlaces((prev) => [...prev, newPlaceText.trim()]);
-                              setEditPlace(newPlaceText.trim());
-                              setNewPlaceText('');
-                              setIsPlaceOpen(false);
-                            }}
-                          >
-                            <Text style={styles.addNewPlaceText}>+ Add "{newPlaceText.trim()}"</Text>
-                          </TouchableOpacity>
-                        )}
-                        {filtered.length === 0 && !canAdd && (
-                          <View style={styles.comboBoxItem}>
-                            <Text style={styles.comboBoxItemText}>No matches</Text>
+
+                      {/* Place dropdown */}
+                      {openDropdownIdx === idx && (
+                        <View style={styles.comboBoxDropdown}>
+                          <View style={styles.searchRow}>
+                            <TextInput
+                              style={styles.searchInput}
+                              value={loc.placeSearch}
+                              onChangeText={(t) => updateLoc({ placeSearch: t })}
+                              placeholder="Search or add place..."
+                              placeholderTextColor={theme.colors.textTertiary}
+                              returnKeyType="done"
+                              autoFocus
+                              onSubmitEditing={() => {
+                                if (canAdd) {
+                                  const p = loc.placeSearch.trim();
+                                  setCustomPlaces((prev) => [...prev, p]);
+                                  updateLoc({ place: p, placeSearch: '' });
+                                  savePlace(p, loc.address, userRegion);
+                                  setOpenDropdownIdx(null);
+                                }
+                              }}
+                            />
+                            {loc.placeSearch ? (
+                              <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}>
+                                <Text style={styles.searchClear}>✕</Text>
+                              </TouchableOpacity>
+                            ) : null}
                           </View>
-                        )}
-                      </ScrollView>
+                          <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
+                            {filtered.map((p) => (
+                              <TouchableOpacity
+                                key={p}
+                                style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
+                                onPress={() => {
+                                  updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '' });
+                                  setOpenDropdownIdx(null);
+                                }}
+                              >
+                                <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
+                              </TouchableOpacity>
+                            ))}
+                            {canAdd && (
+                              <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
+                                const p = loc.placeSearch.trim();
+                                setCustomPlaces((prev) => [...prev, p]);
+                                updateLoc({ place: p, placeSearch: '' });
+                                savePlace(p, loc.address, userRegion);
+                                setOpenDropdownIdx(null);
+                              }}>
+                                <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
+                              </TouchableOpacity>
+                            )}
+                            {filtered.length === 0 && !canAdd && (
+                              <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>
+                            )}
+                          </ScrollView>
+                        </View>
+                      )}
+
+                      {/* Address */}
+                      <TextInput
+                        style={[styles.input, { marginLeft: 0, marginTop: theme.spacing.sm }]}
+                        value={loc.address}
+                        onChangeText={(t) => updateLoc({ address: t })}
+                        placeholder="Address"
+                        placeholderTextColor={theme.colors.textTertiary}
+                      />
+
+                      {/* Date — calendar picker */}
+                      <TouchableOpacity
+                        style={[styles.input, styles.dateTrigger, { marginLeft: 0, marginTop: theme.spacing.sm }]}
+                        onPress={() => setDatePickerLocIdx(idx)}
+                      >
+                        <Text style={loc.eventDate ? styles.dateTriggerText : styles.dateTriggerPlaceholder}>
+                          {loc.eventDate || 'Select Date'}
+                        </Text>
+                        <Text>📅</Text>
+                      </TouchableOpacity>
+
+                      {/* Start time */}
+                      <Text style={styles.timeLabel}>Start Time</Text>
+                      <View style={styles.timeRow}>
+                        <TextInput style={styles.timeInput} value={loc.startHour} onChangeText={(t) => updateLoc({ startHour: t })} placeholder="HH" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} />
+                        <Text style={styles.timeSeparator}>:</Text>
+                        <TextInput style={styles.timeInput} value={loc.startMin} onChangeText={(t) => updateLoc({ startMin: t })} placeholder="MM" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} />
+                        <TouchableOpacity style={styles.periodButton} onPress={() => updateLoc({ startPeriod: loc.startPeriod === 'AM' ? 'PM' : 'AM' })}>
+                          <Text style={styles.periodButtonText}>{loc.startPeriod}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Duration quick-select */}
+                      <View style={styles.locDurationRow}>
+                        {[1, 2, 3, 4].map((hrs) => {
+                          const applyLocDuration = () => {
+                            const h = parseInt(loc.startHour) || 0;
+                            const m = parseInt(loc.startMin) || 0;
+                            if (!loc.startHour && !loc.startMin) return;
+                            let startH24 = h;
+                            if (loc.startPeriod === 'PM' && h !== 12) startH24 += 12;
+                            if (loc.startPeriod === 'AM' && h === 12) startH24 = 0;
+                            let totalMins = (startH24 * 60 + m + hrs * 60) % (24 * 60);
+                            const endH24 = Math.floor(totalMins / 60);
+                            const endM = totalMins % 60;
+                            let endH12 = endH24 % 12;
+                            if (endH12 === 0) endH12 = 12;
+                            updateLoc({ endHour: endH12.toString(), endMin: endM.toString().padStart(2, '0'), endPeriod: endH24 >= 12 ? 'PM' : 'AM' });
+                          };
+                          return (
+                            <TouchableOpacity key={hrs} style={styles.locDurationBtn} onPress={applyLocDuration}>
+                              <Text style={styles.locDurationBtnText}>{hrs} {hrs === 1 ? 'hr' : 'hrs'}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {/* End time */}
+                      <Text style={styles.timeLabel}>End Time</Text>
+                      <View style={styles.timeRow}>
+                        <TextInput style={styles.timeInput} value={loc.endHour} onChangeText={(t) => updateLoc({ endHour: t })} placeholder="HH" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} />
+                        <Text style={styles.timeSeparator}>:</Text>
+                        <TextInput style={styles.timeInput} value={loc.endMin} onChangeText={(t) => updateLoc({ endMin: t })} placeholder="MM" placeholderTextColor={theme.colors.textTertiary} keyboardType="number-pad" maxLength={2} />
+                        <TouchableOpacity style={styles.periodButton} onPress={() => updateLoc({ endPeriod: loc.endPeriod === 'AM' ? 'PM' : 'AM' })}>
+                          <Text style={styles.periodButtonText}>{loc.endPeriod}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   );
-                })()}
+                })}
 
-                {/* Address Input */}
-                <TextInput
-                  style={[styles.input, { marginLeft: 0, marginTop: theme.spacing.sm }]}
-                  value={editAddress}
-                  onChangeText={setEditAddress}
-                  placeholder="Address"
-                  placeholderTextColor={theme.colors.textTertiary}
-                />
+                {/* Add part button */}
+                <TouchableOpacity
+                  style={styles.addLocationBtn}
+                  onPress={showAddPartOptions}
+                >
+                  <Text style={styles.addLocationBtnText}>+ Add Part</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <>
-                {localEvent.Place && (
-                  <Text style={styles.infoText}>📍 {localEvent.Place}</Text>
-                )}
-                {localEvent.Address && (
-                  <TouchableOpacity onPress={handleAddressPress}>
-                    <Text style={styles.linkText}>{localEvent.Address}</Text>
-                  </TouchableOpacity>
+                {localEvent.locations && localEvent.locations.length > 0 ? (
+                  localEvent.locations.map((loc, i) => {
+                    // Highlight only when there are multiple locations (to distinguish which belongs to this date)
+                    const hasMultipleLocations = (localEvent.locations?.length ?? 0) > 1;
+                    const isActiveForViewDate = hasMultipleLocations && (localEvent._isContinuation
+                      ? loc.eventDate === viewDate
+                      : (!loc.eventDate || loc.eventDate === viewDate));
+                    return (
+                      <View
+                        key={i}
+                        style={[
+                          i > 0 ? { marginTop: theme.spacing.md } : undefined,
+                          isActiveForViewDate ? styles.activeLocationBlock : undefined,
+                        ]}
+                      >
+                        {!!loc.eventDate && loc.eventDate !== viewDate && (
+                          <Text style={styles.infoText}>📅 {formatEventDate(loc.eventDate)}</Text>
+                        )}
+                        {!!loc.place && <Text style={styles.infoText}>📍 {loc.place}</Text>}
+                        {!!loc.address && (
+                          <TouchableOpacity onPress={() => openAddressInNavApp(loc.address)}>
+                            <Text style={styles.linkText}>{loc.address}</Text>
+                          </TouchableOpacity>
+                        )}
+                        {!!loc.startTime && (
+                          <Text style={styles.infoText}>
+                            ⏱️ {formatTime(loc.startTime)}{loc.endTime ? ` – ${formatTime(loc.endTime)}` : ''}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })
+                ) : (
+                  <>
+                    {localEvent.Place && <Text style={styles.infoText}>📍 {localEvent.Place}</Text>}
+                    {localEvent.Address && (
+                      <TouchableOpacity onPress={handleAddressPress}>
+                        <Text style={styles.linkText}>{localEvent.Address}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {localEvent.Place2 && (
+                      <Text style={[styles.infoText, { marginTop: theme.spacing.sm }]}>📍 {localEvent.Place2}</Text>
+                    )}
+                    {localEvent.Address2 && (
+                      <TouchableOpacity onPress={() => openAddressInNavApp(localEvent.Address2!)}>
+                        <Text style={styles.linkText}>{localEvent.Address2}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {localEvent.Place3 && (
+                      <Text style={[styles.infoText, { marginTop: theme.spacing.sm }]}>📍 {localEvent.Place3}</Text>
+                    )}
+                    {localEvent.Address3 && (
+                      <TouchableOpacity onPress={() => openAddressInNavApp(localEvent.Address3!)}>
+                        <Text style={styles.linkText}>{localEvent.Address3}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -926,81 +1345,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           {/* Date & Time */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Schedule</Text>
-            {isEditing ? (
-              <>
-                <Text style={styles.timeLabel}>Start Time</Text>
-                <View style={styles.timeRow}>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={editStartHour}
-                    onChangeText={setEditStartHour}
-                    placeholder="HH"
-                    placeholderTextColor={theme.colors.textTertiary}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                  <Text style={styles.timeSeparator}>:</Text>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={editStartMin}
-                    onChangeText={setEditStartMin}
-                    placeholder="MM"
-                    placeholderTextColor={theme.colors.textTertiary}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                  <TouchableOpacity
-                    style={styles.periodButton}
-                    onPress={() => setEditStartPeriod(editStartPeriod === 'AM' ? 'PM' : 'AM')}
-                  >
-                    <Text style={styles.periodButtonText}>{editStartPeriod}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.timeLabel}>End Time</Text>
-                <View style={styles.timeRow}>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={editEndHour}
-                    onChangeText={setEditEndHour}
-                    placeholder="HH"
-                    placeholderTextColor={theme.colors.textTertiary}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                  <Text style={styles.timeSeparator}>:</Text>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={editEndMin}
-                    onChangeText={setEditEndMin}
-                    placeholder="MM"
-                    placeholderTextColor={theme.colors.textTertiary}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                  <TouchableOpacity
-                    style={styles.periodButton}
-                    onPress={() => setEditEndPeriod(editEndPeriod === 'AM' ? 'PM' : 'AM')}
-                  >
-                    <Text style={styles.periodButtonText}>{editEndPeriod}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
+            {isEditing ? null : (
               <>
                 <Text style={styles.infoText}>
-                  📅 {formatEventDateTime(localEvent)}
+                  📅 {formatEventDateTime({ ...localEvent, Start: scheduleStart ?? '', End: scheduleEnd ?? '' })}
                 </Text>
-                {localEvent.End && (() => {
-                  const [sh, sm] = localEvent.Start.split(':').map(Number);
-                  const [eh, em] = localEvent.End.split(':').map(Number);
-                  const totalMins = (eh * 60 + em) - (sh * 60 + sm);
+                {scheduleEnd && (() => {
+                  const [sh, sm] = (scheduleStart || '00:00').split(':').map(Number);
+                  const [eh, em] = scheduleEnd.split(':').map(Number);
+                  let totalMins = (eh * 60 + em) - (sh * 60 + sm);
+                  if (totalMins < 0) totalMins += 24 * 60; // handle overnight (e.g. 8:45 PM – 12:15 AM)
                   const hrs = Math.floor(totalMins / 60);
                   const mins = totalMins % 60;
                   const duration = hrs > 0 && mins > 0 ? `${hrs}h ${mins}m` : hrs > 0 ? `${hrs}h` : `${mins}m`;
                   return (
                     <Text style={styles.infoText}>
-                      ⏱️ {formatTime(localEvent.Start)} - {formatTime(localEvent.End)}{'  •  '}{duration}
+                      ⏱️ {formatTime(scheduleStart)} - {formatTime(scheduleEnd)}{'  •  '}{duration}
                     </Text>
                   );
                 })()}
@@ -1057,10 +1417,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           </View>
 
           {/* Additional Info */}
-          {localEvent.Info && (
+          {(isEditing || localEvent.Info) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Notes</Text>
-              <Text style={styles.infoText}>{localEvent.Info}</Text>
+              {isEditing ? (
+                <TextInput
+                  style={[styles.input, styles.feedbackInput]}
+                  value={editInfo}
+                  onChangeText={setEditInfo}
+                  placeholder="Add notes..."
+                  placeholderTextColor={theme.colors.textTertiary}
+                  multiline
+                  textAlignVertical="top"
+                />
+              ) : (
+                <Text style={styles.infoText}>{localEvent.Info}</Text>
+              )}
             </View>
           )}
 
@@ -1150,15 +1522,205 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
           <View style={styles.bottomPadding} />
         </ScrollView>
+
       </View>
     </Modal>
+
+    {/* Main event date picker */}
+    <Modal
+      visible={showMainDatePicker}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowMainDatePicker(false)}
+    >
+      <TouchableOpacity
+        style={styles.datePickerOverlay}
+        activeOpacity={1}
+        onPress={() => setShowMainDatePicker(false)}
+      >
+        <TouchableOpacity activeOpacity={1}>
+          <View style={styles.datePickerSheet}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Date</Text>
+              <TouchableOpacity onPress={() => setShowMainDatePicker(false)}>
+                <Text style={styles.datePickerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              current={editEventDate ? toISODate(editEventDate) : undefined}
+              onDayPress={(day) => {
+                setEditEventDate(toAmericanDate(day.dateString));
+                setShowMainDatePicker(false);
+              }}
+              markedDates={
+                editEventDate
+                  ? { [toISODate(editEventDate)]: { selected: true, selectedColor: theme.colors.purple } }
+                  : {}
+              }
+              theme={{
+                calendarBackground: theme.colors.cardBackground,
+                textSectionTitleColor: theme.colors.textSecondary,
+                todayTextColor: '#22C55E',
+                dayTextColor: theme.colors.textPrimary,
+                textDisabledColor: theme.colors.disabled,
+                arrowColor: theme.colors.primary,
+                monthTextColor: theme.colors.textPrimary,
+                selectedDayBackgroundColor: theme.colors.purple,
+                selectedDayTextColor: '#FFFFFF',
+              }}
+            />
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+
+    {/* Date picker modal — separate so it layers above the main pageSheet modal */}
+    <Modal
+      visible={datePickerLocIdx !== null}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setDatePickerLocIdx(null)}
+    >
+      <TouchableOpacity
+        style={styles.datePickerOverlay}
+        activeOpacity={1}
+        onPress={() => setDatePickerLocIdx(null)}
+      >
+        <TouchableOpacity activeOpacity={1}>
+          <View style={styles.datePickerSheet}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Date</Text>
+              <TouchableOpacity onPress={() => setDatePickerLocIdx(null)}>
+                <Text style={styles.datePickerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {datePickerLocIdx !== null && (
+              <Calendar
+                current={
+                  editLocations[datePickerLocIdx]?.eventDate
+                    ? toISODate(editLocations[datePickerLocIdx].eventDate)
+                    : undefined
+                }
+                onDayPress={(day) => {
+                  const american = toAmericanDate(day.dateString);
+                  setEditLocations((prev) =>
+                    prev.map((r, i) => i === datePickerLocIdx ? { ...r, eventDate: american } : r)
+                  );
+                  setDatePickerLocIdx(null);
+                }}
+                markedDates={
+                  editLocations[datePickerLocIdx]?.eventDate
+                    ? { [toISODate(editLocations[datePickerLocIdx].eventDate)]: { selected: true, selectedColor: theme.colors.purple } }
+                    : {}
+                }
+                theme={{
+                  calendarBackground: theme.colors.cardBackground,
+                  textSectionTitleColor: theme.colors.textSecondary,
+                  todayTextColor: '#22C55E',
+                  dayTextColor: theme.colors.textPrimary,
+                  textDisabledColor: theme.colors.disabled,
+                  arrowColor: theme.colors.primary,
+                  monthTextColor: theme.colors.textPrimary,
+                  selectedDayBackgroundColor: theme.colors.purple,
+                  selectedDayTextColor: '#FFFFFF',
+                }}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
+  locationBlock: {
+    marginTop: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.divider,
+  },
+  activeLocationBlock: {
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.sm,
+    backgroundColor: 'rgba(168, 85, 247, 0.22)',
+  },
+  locationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.xs,
+  },
+  removeLocationBtn: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  addLocationBtn: {
+    marginTop: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.md,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  addLocationBtnText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  dateTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    textAlign: 'left',
+  },
+  dateTriggerText: {
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  dateTriggerPlaceholder: {
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textTertiary,
+  },
+  datePickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+    zIndex: 999,
+  },
+  datePickerSheet: {
+    backgroundColor: theme.colors.cardBackground,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 24,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  datePickerTitle: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.textPrimary,
+  },
+  datePickerClose: {
+    fontSize: 18,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: theme.spacing.sm,
   },
   header: {
     flexDirection: 'row',
@@ -1472,6 +2034,26 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.lg,
     marginBottom: theme.spacing.md,
   },
+  locDurationRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
+  },
+  locDurationBtn: {
+    flex: 1,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.borderRadius.sm,
+    paddingVertical: theme.spacing.xs,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  locDurationBtnText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.medium,
+  },
   timeLabel: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
@@ -1576,6 +2158,15 @@ const styles = StyleSheet.create({
   },
   comboBoxItemActive: {
     backgroundColor: theme.colors.primary + '20',
+  },
+  comboBoxIcon: {
+    fontSize: 18,
+    marginRight: theme.spacing.sm,
+  },
+  comboBoxItemIcon: {
+    fontSize: 16,
+    marginRight: theme.spacing.sm,
+    width: 24,
   },
   comboBoxItemText: {
     fontSize: theme.fontSize.md,

@@ -272,6 +272,21 @@ app.post('/calendar/create-event', async (req, res) => {
       },
     };
 
+    // Delete old calendar event first (if replacing)
+    let deleteWarning = null;
+    if (eventData.existingEventId) {
+      try {
+        await calendar.events.delete({ calendarId, eventId: eventData.existingEventId });
+        console.log('✓ Old calendar event deleted:', eventData.existingEventId);
+      } catch (deleteErr) {
+        const code = deleteErr.code || deleteErr.status || 'unknown';
+        const msg = deleteErr.message || String(deleteErr);
+        console.log(`⚠️  Delete failed (${code}): ${msg} — existingEventId: ${eventData.existingEventId}`);
+        deleteWarning = `Delete failed (${code}): ${msg}`;
+        // Continue — create the new event regardless
+      }
+    }
+
     // Try to create the event - googleapis will auto-refresh if needed
     try {
       const response = await calendar.events.insert({
@@ -285,6 +300,7 @@ app.post('/calendar/create-event', async (req, res) => {
         success: true,
         eventId: response.data.id,
         eventUrl: response.data.htmlLink,
+        deleteWarning, // null if delete succeeded, error string if it failed
       });
     } catch (apiError) {
       // If 401, try one explicit refresh + retry before giving up

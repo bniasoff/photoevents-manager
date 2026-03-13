@@ -28,6 +28,25 @@ export const formatTime = (timeString: string): string => {
 };
 
 /**
+ * Calculate duration between two HH:MM(:SS) time strings
+ */
+export const formatEventDuration = (start: string, end: string): string => {
+  try {
+    if (!start || !end) return '';
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diffMins = (eh * 60 + em) - (sh * 60 + sm);
+    if (diffMins <= 0) return '';
+    if (diffMins < 60) return `${diffMins} min`;
+    const hours = diffMins / 60;
+    if (hours === Math.floor(hours)) return `${hours} hr${hours !== 1 ? 's' : ''}`;
+    return `${hours.toFixed(1)} hrs`;
+  } catch {
+    return '';
+  }
+};
+
+/**
  * Format event date and time for display
  */
 export const formatEventDateTime = (event: Event): string => {
@@ -44,7 +63,8 @@ export const formatEventDateTime = (event: Event): string => {
         new Date(2000, 0, 1, parseInt(hours), parseInt(minutes)),
         'h:mm a'
       );
-      return `${dateStr} @ ${timeStr}`;
+      const duration = event.End ? formatEventDuration(event.Start, event.End) : '';
+      return `${dateStr} @ ${timeStr}${duration ? ` · ${duration}` : ''}`;
     }
 
     return dateStr;

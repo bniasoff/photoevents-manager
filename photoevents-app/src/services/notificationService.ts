@@ -101,6 +101,44 @@ export const scheduleEventNotification = async (
 };
 
 /**
+ * Schedule a pre-event reminder X minutes before the event.
+ * Respects the user's reminder enabled/minutes preferences.
+ */
+export const schedulePreEventReminder = async (
+  event: Event,
+  minutesBefore: number
+): Promise<string | null> => {
+  if (notificationsDisabled || !Notifications) return null;
+  try {
+    const eventDate = parseISO(event.EventDate);
+    const now = new Date();
+    if (!isAfter(eventDate, now)) return null;
+
+    const notificationTime = new Date(eventDate.getTime() - minutesBefore * 60 * 1000);
+    if (!isAfter(notificationTime, now)) return null;
+
+    const label = minutesBefore < 60
+      ? `${minutesBefore} minutes`
+      : `${minutesBefore / 60} hour${minutesBefore > 60 ? 's' : ''}`;
+
+    const identifier = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `📸 Upcoming Event: ${event.Name}`,
+        body: `${event.Category} at ${event.Place || 'venue'} starts in ${label}`,
+        data: { eventId: getEventId(event), type: 'preEvent' },
+        sound: true,
+      },
+      trigger: notificationTime,
+    });
+
+    return identifier;
+  } catch (error) {
+    console.error('Error scheduling pre-event reminder:', error);
+    return null;
+  }
+};
+
+/**
  * Schedule notification for unpaid event
  */
 export const scheduleUnpaidNotification = async (

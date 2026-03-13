@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   RefreshControl,
   Text,
+  TextInput,
+  TouchableOpacity,
   DeviceEventEmitter,
 } from 'react-native';
 import { Event } from '../types/Event';
@@ -15,7 +17,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { EventDetailModal } from '../components/EventDetailModal';
 import { fetchEvents } from '../services/api';
-import { sortEventsByDate, getEventId } from '../utils/eventHelpers';
+import { sortEventsByDate, getEventId, searchEvents } from '../utils/eventHelpers';
 import { getSortOrderPreference } from '../services/navigationPreference';
 import { groupEventsByYearAndCategory, getCategoryIcon, sortCategories } from '../utils/categoryHelpers';
 import { theme } from '../theme/theme';
@@ -23,6 +25,7 @@ import { theme } from '../theme/theme';
 export const ByCategoryScreen: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [groupedEvents, setGroupedEvents] = useState<Record<string, Record<string, Event[]>>>({});
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -59,8 +62,68 @@ export const ByCategoryScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setGroupedEvents(groupEventsByYearAndCategory(events));
+    const filtered = searchEvents(events, searchQuery);
+    setGroupedEvents(groupEventsByYearAndCategory(filtered));
+  }, [events, searchQuery]);
+
+  const phoneEvents = useMemo(() => {
+    const map: Record<string, Event[]> = {};
+    events.forEach((e) => {
+      if (e.Phone) {
+        if (!map[e.Phone]) map[e.Phone] = [];
+        map[e.Phone].push(e);
+      }
+    });
+    return map;
   }, [events]);
+
+  // Events where the customer (same phone) has booked more than once
+  const recurringByCategory = useMemo(() => {
+    const filtered = events.filter(
+      (e) => e.Phone && (phoneEvents[e.Phone]?.length || 0) > 1
+    );
+    const map: Record<string, Event[]> = {};
+    filtered.forEach((e) => {
+      const cat = e.Category || 'Other';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(e);
+    });
+    return map;
+  }, [events, phoneEvents]);
+
+  // Feedback grouped by category — must be before early returns (hooks rules)
+  const feedbackByCategory = useMemo(() => {
+    const filtered = searchEvents(events, searchQuery);
+    const map: Record<string, Event[]> = {};
+    filtered
+      .filter((e) => {
+        const yr = new Date(e.EventDate).getFullYear();
+        return yr >= 2023 && e.Feedback && e.Feedback.trim().length > 0;
+      })
+      .forEach((e) => {
+        const cat = e.Category || 'Other';
+        if (!map[cat]) map[cat] = [];
+        map[cat].push(e);
+      });
+    return map;
+  }, [events, searchQuery]);
+
+  // High ratings grouped by category — must be before early returns (hooks rules)
+  const highRatingsByCategory = useMemo(() => {
+    const filtered = searchEvents(events, searchQuery);
+    const map: Record<string, Event[]> = {};
+    filtered
+      .filter((e) => {
+        const yr = new Date(e.EventDate).getFullYear();
+        return yr >= 2023 && e.Ratings && e.Ratings > 3;
+      })
+      .forEach((e) => {
+        const cat = e.Category || 'Other';
+        if (!map[cat]) map[cat] = [];
+        map[cat].push(e);
+      });
+    return map;
+  }, [events, searchQuery]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -105,18 +168,6 @@ export const ByCategoryScreen: React.FC = () => {
     return parseInt(b) - parseInt(a);
   });
 
-  // Filter events from 2023 onwards with feedback
-  const eventsWithFeedbackAfter2023 = events.filter((event) => {
-    const eventYear = new Date(event.EventDate).getFullYear();
-    return eventYear >= 2023 && event.Feedback && event.Feedback.trim().length > 0;
-  });
-
-  // Filter events from 2023 onwards with high ratings (4-5 stars)
-  const eventsWithHighRatings = events.filter((event) => {
-    const eventYear = new Date(event.EventDate).getFullYear();
-    return eventYear >= 2023 && event.Ratings && event.Ratings > 3;
-  });
-
   // Calculate total events
   const totalEvents = years.reduce((sum, year) => {
     return sum + Object.values(groupedEvents[year]).reduce(
@@ -137,12 +188,129 @@ export const ByCategoryScreen: React.FC = () => {
         />
       }
     >
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search events..."
+          placeholderTextColor={theme.colors.textTertiary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Text style={styles.clearButton}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerText}>
-          {totalEvents} event{totalEvents !== 1 ? 's' : ''} total
+          {totalEvents} event{totalEvents !== 1 ? 's' : ''}{searchQuery ? ' found' : ' total'}
         </Text>
       </View>
+
+      {/* With Feedback — grouped by category */}
+      {Object.keys(feedbackByCategory).length > 0 && (
+        <CollapsibleSection
+          title="💬 With Feedback"
+          count={Object.values(feedbackByCategory).reduce((s, arr) => s + arr.length, 0)}
+          defaultExpanded={false}
+        >
+          <View style={styles.categoryContainer}>
+            {sortCategories(Object.keys(feedbackByCategory)).map((category) => (
+              <CollapsibleSection
+                key={`feedback-${category}`}
+                title={`${getCategoryIcon(category)} ${category}`}
+                count={feedbackByCategory[category].length}
+                defaultExpanded={false}
+              >
+                {feedbackByCategory[category].map((event) => (
+                  <EventCard
+                    key={getEventId(event)}
+                    event={event}
+                    onPress={() => handleEventPress(event)}
+                    recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                    relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                    onRelatedEventPress={handleEventPress}
+                  />
+                ))}
+              </CollapsibleSection>
+            ))}
+          </View>
+        </CollapsibleSection>
+      )}
+
+      {/* High Ratings — grouped by category */}
+      {Object.keys(highRatingsByCategory).length > 0 && (
+        <CollapsibleSection
+          title="⭐ High Ratings"
+          count={Object.values(highRatingsByCategory).reduce((s, arr) => s + arr.length, 0)}
+          defaultExpanded={false}
+        >
+          <View style={styles.categoryContainer}>
+            {sortCategories(Object.keys(highRatingsByCategory)).map((category) => (
+              <CollapsibleSection
+                key={`rating-${category}`}
+                title={`${getCategoryIcon(category)} ${category}`}
+                count={highRatingsByCategory[category].length}
+                defaultExpanded={false}
+              >
+                {highRatingsByCategory[category].map((event) => (
+                  <EventCard
+                    key={getEventId(event)}
+                    event={event}
+                    onPress={() => handleEventPress(event)}
+                    recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                    relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                    onRelatedEventPress={handleEventPress}
+                  />
+                ))}
+              </CollapsibleSection>
+            ))}
+          </View>
+        </CollapsibleSection>
+      )}
+
+      {/* Recurring Customers — grouped by category */}
+      {Object.keys(recurringByCategory).length > 0 && (
+        <CollapsibleSection
+          key={`recurring-${sectionKey}`}
+          title="↻ Recurring Customers"
+          count={Object.values(recurringByCategory).reduce((s, arr) => s + arr.length, 0)}
+          defaultExpanded={false}
+        >
+          <View style={styles.categoryContainer}>
+            {sortCategories(Object.keys(recurringByCategory)).map((category) => {
+              const eventsInCategory = recurringByCategory[category];
+              if (!eventsInCategory || eventsInCategory.length === 0) return null;
+              return (
+                <CollapsibleSection
+                  key={`recurring-${category}`}
+                  title={`${getCategoryIcon(category)} ${category}`}
+                  count={eventsInCategory.length}
+                  defaultExpanded={false}
+                >
+                  {eventsInCategory.map((event) => (
+                    <EventCard
+                      key={getEventId(event)}
+                      event={event}
+                      onPress={() => handleEventPress(event)}
+                      onUpdate={handleEventUpdate}
+                      onDelete={handleEventDelete}
+                      recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                      relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                      onRelatedEventPress={handleEventPress}
+                    />
+                  ))}
+                </CollapsibleSection>
+              );
+            })}
+          </View>
+        </CollapsibleSection>
+      )}
 
       {/* Year Sections */}
       {years.map((year) => {
@@ -155,74 +323,42 @@ export const ByCategoryScreen: React.FC = () => {
         if (yearEventCount === 0) return null;
 
         return (
-          <React.Fragment key={`${year}-${sectionKey}`}>
-            <CollapsibleSection
-              title={`📅 ${year}`}
-              count={yearEventCount}
-              defaultExpanded={false}
-            >
-              {/* Category Sections within Year — derived from data, sorted */}
-              <View style={styles.categoryContainer}>
-                {sortCategories(Object.keys(yearCategories)).map((category) => {
-                  const eventsInCategory = yearCategories[category];
-                  if (!eventsInCategory || eventsInCategory.length === 0) return null;
+          <CollapsibleSection
+            key={`${year}-${sectionKey}`}
+            title={`📅 ${year}`}
+            count={yearEventCount}
+            defaultExpanded={false}
+          >
+            {/* Category Sections within Year — derived from data, sorted */}
+            <View style={styles.categoryContainer}>
+              {sortCategories(Object.keys(yearCategories)).map((category) => {
+                const eventsInCategory = yearCategories[category];
+                if (!eventsInCategory || eventsInCategory.length === 0) return null;
 
-                  return (
-                    <CollapsibleSection
-                      key={`${year}-${category}`}
-                      title={`${getCategoryIcon(category)} ${category}`}
-                      count={eventsInCategory.length}
-                      defaultExpanded={false}
-                    >
-                      {eventsInCategory.map((event) => (
-                        <EventCard
-                          key={getEventId(event)}
-                          event={event}
-                          onPress={() => handleEventPress(event)}
-                          onUpdate={handleEventUpdate}
-                          onDelete={handleEventDelete}
-                        />
-                      ))}
-                    </CollapsibleSection>
-                  );
-                })}
-              </View>
-            </CollapsibleSection>
-
-            {/* Show feedback section after 2023 */}
-            {year === '2023' && eventsWithFeedbackAfter2023.length > 0 && (
-              <CollapsibleSection
-                title="💬 With Feedback"
-                count={eventsWithFeedbackAfter2023.length}
-                defaultExpanded={false}
-              >
-                {eventsWithFeedbackAfter2023.map((event) => (
-                  <EventCard
-                    key={getEventId(event)}
-                    event={event}
-                    onPress={() => handleEventPress(event)}
-                  />
-                ))}
-              </CollapsibleSection>
-            )}
-
-            {/* Show high ratings section after feedback */}
-            {year === '2023' && eventsWithHighRatings.length > 0 && (
-              <CollapsibleSection
-                title="⭐ High Ratings"
-                count={eventsWithHighRatings.length}
-                defaultExpanded={false}
-              >
-                {eventsWithHighRatings.map((event) => (
-                  <EventCard
-                    key={getEventId(event)}
-                    event={event}
-                    onPress={() => handleEventPress(event)}
-                  />
-                ))}
-              </CollapsibleSection>
-            )}
-          </React.Fragment>
+                return (
+                  <CollapsibleSection
+                    key={`${year}-${category}`}
+                    title={`${getCategoryIcon(category)} ${category}`}
+                    count={eventsInCategory.length}
+                    defaultExpanded={false}
+                  >
+                    {eventsInCategory.map((event) => (
+                      <EventCard
+                        key={getEventId(event)}
+                        event={event}
+                        onPress={() => handleEventPress(event)}
+                        onUpdate={handleEventUpdate}
+                        onDelete={handleEventDelete}
+                        recurringCount={event.Phone ? Math.max(0, (phoneEvents[event.Phone]?.length || 0) - 1) : 0}
+                        relatedEvents={event.Phone ? (phoneEvents[event.Phone] || []).filter((e) => getEventId(e) !== getEventId(event)) : []}
+                        onRelatedEventPress={handleEventPress}
+                      />
+                    ))}
+                  </CollapsibleSection>
+                );
+              })}
+            </View>
+          </CollapsibleSection>
         );
       })}
 
@@ -251,6 +387,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.cardBackground,
+    marginHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  searchIcon: {
+    fontSize: 16,
+    marginRight: theme.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textPrimary,
+  },
+  clearButton: {
+    fontSize: 16,
+    color: theme.colors.textTertiary,
+    paddingLeft: theme.spacing.sm,
   },
   header: {
     padding: theme.spacing.md,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -114,6 +114,17 @@ export const AllEventsScreen: React.FC = () => {
     setFilteredEvents(filtered);
   }, [searchQuery, statusFilter, events]);
 
+  const phoneEvents = useMemo(() => {
+    const map: Record<string, Event[]> = {};
+    events.forEach((e) => {
+      if (e.Phone) {
+        if (!map[e.Phone]) map[e.Phone] = [];
+        map[e.Phone].push(e);
+      }
+    });
+    return map;
+  }, [events]);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadEvents();
@@ -225,7 +236,15 @@ export const AllEventsScreen: React.FC = () => {
             data={filteredEvents}
             keyExtractor={(item) => item._id}
             renderItem={({ item }) => (
-              <EventCard event={item} onPress={() => handleEventPress(item)} onUpdate={handleEventUpdate} onDelete={handleEventDelete} />
+              <EventCard
+                event={item}
+                onPress={() => handleEventPress(item)}
+                onUpdate={handleEventUpdate}
+                onDelete={handleEventDelete}
+                recurringCount={item.Phone ? Math.max(0, (phoneEvents[item.Phone]?.length || 0) - 1) : 0}
+                relatedEvents={item.Phone ? (phoneEvents[item.Phone] || []).filter((e) => getEventId(e) !== getEventId(item)) : []}
+                onRelatedEventPress={handleEventPress}
+              />
             )}
             refreshControl={
               <RefreshControl
