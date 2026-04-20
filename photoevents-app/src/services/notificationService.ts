@@ -71,7 +71,14 @@ export const scheduleEventNotification = async (
 ): Promise<string | null> => {
   if (notificationsDisabled || !Notifications) return null;
   try {
-    const eventDate = parseISO(event.EventDate);
+    let eventDate = parseISO(event.EventDate);
+    if (event.Start) {
+      const [h, m, s] = event.Start.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        eventDate = new Date(eventDate);
+        eventDate.setHours(h, m, isNaN(s) ? 0 : s, 0);
+      }
+    }
     const now = new Date();
 
     if (!isAfter(eventDate, now)) return null;
@@ -110,7 +117,15 @@ export const schedulePreEventReminder = async (
 ): Promise<string | null> => {
   if (notificationsDisabled || !Notifications) return null;
   try {
-    const eventDate = parseISO(event.EventDate);
+    // Combine EventDate (date part) with Start time (HH:MM:SS) for accurate trigger
+    let eventDate = parseISO(event.EventDate);
+    if (event.Start) {
+      const [h, m, s] = event.Start.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        eventDate = new Date(eventDate);
+        eventDate.setHours(h, m, isNaN(s) ? 0 : s, 0);
+      }
+    }
     const now = new Date();
     if (!isAfter(eventDate, now)) return null;
 
