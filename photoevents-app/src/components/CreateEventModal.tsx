@@ -34,6 +34,7 @@ interface ExtraLocRow {
   endMin: string;
   endPeriod: 'AM' | 'PM';
   placeSearch: string;
+  isHouse?: boolean;
 }
 
 const toISODateCreate = (americanDate: string): string => {
@@ -90,6 +91,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [categorySearch, setCategorySearch] = useState('');
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [isPlaceOpen, setIsPlaceOpen] = useState(false);
+  const [isHouseMain, setIsHouseMain] = useState(false);
   const [customPlaces, setCustomPlaces] = useState<string[]>([]);
   const [newPlaceText, setNewPlaceText] = useState('');
   const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
@@ -383,11 +385,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         EventDate: eventDate,
         Start: startTime,
         End: endTime,
-        Place: place.trim(),
+        Place: isHouseMain ? 'Private Home' : place.trim(),
         Address: address.trim(),
-        Place2: extraLocations[0]?.place.trim() || '',
+        Place2: extraLocations[0]?.isHouse ? 'Private Home' : (extraLocations[0]?.place.trim() || ''),
         Address2: extraLocations[0]?.address.trim() || '',
-        Place3: extraLocations[1]?.place.trim() || '',
+        Place3: extraLocations[1]?.isHouse ? 'Private Home' : (extraLocations[1]?.place.trim() || ''),
         Address3: extraLocations[1]?.address.trim() || '',
         Phone: phone.trim(),
         Phone2: phone2.trim(),
@@ -405,9 +407,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
       // Save to event_locations table
       const allLocations = [
-        { place: place.trim(), address: address.trim(), eventDate: selectedDate, startTime, endTime, sortOrder: 0 },
+        { place: isHouseMain ? 'Private Home' : place.trim(), address: address.trim(), eventDate: selectedDate, startTime, endTime, sortOrder: 0 },
         ...extraLocations.map((loc, i) => ({
-          place: loc.place.trim(),
+          place: loc.isHouse ? 'Private Home' : loc.place.trim(),
           address: loc.address.trim(),
           eventDate: loc.eventDate ? toISODateCreate(loc.eventDate) : '',
           startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
@@ -494,6 +496,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setName('');
     setPlace('');
     setAddress('');
+    setIsHouseMain(false);
     setExtraLocations([]);
     setOpenExtraDropdownIdx(null);
     setPhone('');
@@ -817,7 +820,31 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
           {/* Place */}
           <View style={styles.section} onLayout={(e) => { placeYRef.current = e.nativeEvent.layout.y; }}>
-            <Text style={styles.label}>Place</Text>
+            <View style={styles.locationHeader}>
+              <Text style={styles.label}>Place</Text>
+              {(!place || isHouseMain) && (
+                <TouchableOpacity
+                  onPress={() => {
+                    const next = !isHouseMain;
+                    setIsHouseMain(next);
+                    if (next) { setPlace('Private Home'); setIsPlaceOpen(false); }
+                    else { setPlace(''); }
+                  }}
+                  style={[styles.houseToggle, isHouseMain && styles.houseToggleActive]}
+                >
+                  <Text style={[styles.houseToggleText, isHouseMain && styles.houseToggleTextActive]}>
+                    🏠 House
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {isHouseMain ? (
+              <View style={[styles.placeComboRow, { paddingVertical: 8 }]}>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.sm }}>
+                  🏠 Private Home
+                </Text>
+              </View>
+            ) : (
             <View style={styles.placeComboRow}>
               <TouchableOpacity
                 style={[styles.comboBox, isPlaceOpen && styles.comboBoxOpen, styles.placeComboFlex]}
@@ -833,11 +860,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
               </TouchableOpacity>
               {place ? (
-                <TouchableOpacity onPress={() => { setPlace(''); setAddress(''); }}>
+                <TouchableOpacity onPress={() => { setPlace(''); setAddress(''); setIsHouseMain(false); }}>
                   <Text style={styles.searchClear}>✕</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
+            )}
 
             {isPlaceOpen && (() => {
               const search = newPlaceText.toLowerCase();
@@ -862,6 +890,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                           const p = newPlaceText.trim();
                           setCustomPlaces((prev) => [...prev, p]);
                           setPlace(p);
+                          setIsHouseMain(false);
                           savePlace(p, address, userRegion);
                           setNewPlaceText('');
                           setIsPlaceOpen(false);
@@ -885,6 +914,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                         style={[styles.comboBoxItem, place === p && styles.comboBoxItemActive]}
                         onPress={() => {
                           setPlace(p);
+                          setIsHouseMain(false);
                           if (effectiveAddresses[p]) setAddress(effectiveAddresses[p]);
                           setNewPlaceText('');
                           setIsPlaceOpen(false);
@@ -902,6 +932,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                           const p = newPlaceText.trim();
                           setCustomPlaces((prev) => [...prev, p]);
                           setPlace(p);
+                          setIsHouseMain(false);
                           savePlace(p, address, userRegion);
                           setNewPlaceText('');
                           setIsPlaceOpen(false);
@@ -945,74 +976,100 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               <View key={idx} style={styles.section}>
                 <View style={styles.locationHeader}>
                   <Text style={styles.label}>Location {idx + 2}</Text>
-                  <TouchableOpacity onPress={() => {
-                    setOpenExtraDropdownIdx(null);
-                    setExtraLocations((prev) => prev.filter((_, i) => i !== idx));
-                  }}>
-                    <Text style={styles.removeLocationBtn}>✕</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {(!loc.place || loc.isHouse) && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const next = !loc.isHouse;
+                          updateLoc({ isHouse: next, place: next ? 'Private Home' : '', placeSearch: '' });
+                          setOpenExtraDropdownIdx(null);
+                        }}
+                        style={[styles.houseToggle, loc.isHouse && styles.houseToggleActive]}
+                      >
+                        <Text style={[styles.houseToggleText, loc.isHouse && styles.houseToggleTextActive]}>
+                          🏠 House
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => {
+                      setOpenExtraDropdownIdx(null);
+                      setExtraLocations((prev) => prev.filter((_, i) => i !== idx));
+                    }}>
+                      <Text style={styles.removeLocationBtn}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 {/* Place combobox */}
-                <View style={styles.placeComboRow}>
-                  <TouchableOpacity
-                    style={[styles.comboBox, openExtraDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
-                    onPress={() => setOpenExtraDropdownIdx(openExtraDropdownIdx === idx ? null : idx)}
-                  >
-                    <View style={styles.comboBoxValue}>
-                      {loc.place ? <Text style={styles.comboBoxText}>{loc.place}</Text> : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
-                    </View>
-                    <Text style={styles.comboBoxArrow}>{openExtraDropdownIdx === idx ? '▲' : '▼'}</Text>
-                  </TouchableOpacity>
-                  {loc.place ? (
-                    <TouchableOpacity onPress={() => updateLoc({ place: '', address: '' })}>
-                      <Text style={styles.searchClear}>✕</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                {openExtraDropdownIdx === idx && (
-                  <View style={styles.comboBoxDropdown}>
-                    <View style={styles.searchRow}>
-                      <TextInput
-                        style={styles.searchInput}
-                        value={loc.placeSearch}
-                        onChangeText={(t) => updateLoc({ placeSearch: t })}
-                        placeholder="Search or add place..."
-                        placeholderTextColor={theme.colors.textTertiary}
-                        returnKeyType="done"
-                        autoFocus
-                        onSubmitEditing={() => {
-                          if (canAdd) {
-                            const p = loc.placeSearch.trim();
-                            setCustomPlaces((prev) => [...prev, p]);
-                            updateLoc({ place: p, placeSearch: '' });
-                            savePlace(p, loc.address, userRegion);
-                            setOpenExtraDropdownIdx(null);
-                          }
-                        }}
-                      />
-                      {loc.placeSearch ? <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}><Text style={styles.searchClear}>✕</Text></TouchableOpacity> : null}
-                    </View>
-                    <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
-                      {filtered.map((p) => (
-                        <TouchableOpacity key={p} style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
-                          onPress={() => { updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '' }); setOpenExtraDropdownIdx(null); }}>
-                          <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
-                        </TouchableOpacity>
-                      ))}
-                      {canAdd && (
-                        <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
-                          const p = loc.placeSearch.trim();
-                          setCustomPlaces((prev) => [...prev, p]);
-                          updateLoc({ place: p, placeSearch: '' });
-                          savePlace(p, loc.address, userRegion);
-                          setOpenExtraDropdownIdx(null);
-                        }}>
-                          <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
-                        </TouchableOpacity>
-                      )}
-                      {filtered.length === 0 && !canAdd && <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>}
-                    </ScrollView>
+                {loc.isHouse ? (
+                  <View style={[styles.placeComboRow, { paddingVertical: 8 }]}>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.sm }}>
+                      🏠 Private Home
+                    </Text>
                   </View>
+                ) : (
+                  <>
+                    <View style={styles.placeComboRow}>
+                      <TouchableOpacity
+                        style={[styles.comboBox, openExtraDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
+                        onPress={() => setOpenExtraDropdownIdx(openExtraDropdownIdx === idx ? null : idx)}
+                      >
+                        <View style={styles.comboBoxValue}>
+                          {loc.place ? <Text style={styles.comboBoxText}>{loc.place}</Text> : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
+                        </View>
+                        <Text style={styles.comboBoxArrow}>{openExtraDropdownIdx === idx ? '▲' : '▼'}</Text>
+                      </TouchableOpacity>
+                      {loc.place ? (
+                        <TouchableOpacity onPress={() => updateLoc({ place: '', address: '', isHouse: false })}>
+                          <Text style={styles.searchClear}>✕</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {openExtraDropdownIdx === idx && (
+                      <View style={styles.comboBoxDropdown}>
+                        <View style={styles.searchRow}>
+                          <TextInput
+                            style={styles.searchInput}
+                            value={loc.placeSearch}
+                            onChangeText={(t) => updateLoc({ placeSearch: t })}
+                            placeholder="Search or add place..."
+                            placeholderTextColor={theme.colors.textTertiary}
+                            returnKeyType="done"
+                            autoFocus
+                            onSubmitEditing={() => {
+                              if (canAdd) {
+                                const p = loc.placeSearch.trim();
+                                setCustomPlaces((prev) => [...prev, p]);
+                                updateLoc({ place: p, placeSearch: '', isHouse: false });
+                                savePlace(p, loc.address, userRegion);
+                                setOpenExtraDropdownIdx(null);
+                              }
+                            }}
+                          />
+                          {loc.placeSearch ? <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}><Text style={styles.searchClear}>✕</Text></TouchableOpacity> : null}
+                        </View>
+                        <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
+                          {filtered.map((p) => (
+                            <TouchableOpacity key={p} style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
+                              onPress={() => { updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '', isHouse: false }); setOpenExtraDropdownIdx(null); }}>
+                              <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
+                            </TouchableOpacity>
+                          ))}
+                          {canAdd && (
+                            <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
+                              const p = loc.placeSearch.trim();
+                              setCustomPlaces((prev) => [...prev, p]);
+                              updateLoc({ place: p, placeSearch: '', isHouse: false });
+                              savePlace(p, loc.address, userRegion);
+                              setOpenExtraDropdownIdx(null);
+                            }}>
+                              <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
+                            </TouchableOpacity>
+                          )}
+                          {filtered.length === 0 && !canAdd && <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </>
                 )}
                 <TextInput
                   style={[styles.input, { marginTop: theme.spacing.sm }]}
@@ -1273,6 +1330,26 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     color: theme.colors.textSecondary,
     paddingHorizontal: theme.spacing.sm,
+  },
+  houseToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: 'transparent',
+  },
+  houseToggleActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: theme.colors.primary,
+  },
+  houseToggleText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+  },
+  houseToggleTextActive: {
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
   addLocationBtn: {
     marginHorizontal: theme.spacing.md,

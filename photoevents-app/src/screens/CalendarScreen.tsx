@@ -106,7 +106,7 @@ const buildMarks = (
   Object.keys(hebrewDates).forEach((date) => {
     marks[date] = {
       customStyles: {
-        container: { backgroundColor: '#FFB84D', borderRadius: 18 },
+        container: { backgroundColor: '#FFB84D', borderRadius: 8 },
         text: { color: '#000000', fontWeight: 'bold' },
       },
       events: [],
@@ -122,14 +122,14 @@ const buildMarks = (
       const date = format(parseISO(dateStr + 'T12:00:00'), 'yyyy-MM-dd');
       if (marks[date] && marks[date].isHebrewDate) {
         marks[date].customStyles.container = {
-          backgroundColor: '#FF8C42', borderRadius: 18,
+          backgroundColor: '#FF8C42', borderRadius: 8,
           borderWidth: 2, borderColor: theme.colors.purple,
         };
         marks[date].customStyles.text = { color: '#FFFFFF', fontWeight: 'bold' };
       } else if (!marks[date]) {
         marks[date] = {
           customStyles: {
-            container: { backgroundColor: theme.colors.purple, borderRadius: 18 },
+            container: { backgroundColor: theme.colors.purple, borderRadius: 8 },
             text: { color: '#FFFFFF', fontWeight: 'bold' },
           },
           events: [],
@@ -150,14 +150,14 @@ const buildMarks = (
       if (!marks[date]) {
         marks[date] = {
           customStyles: {
-            container: { backgroundColor: theme.colors.purple, borderRadius: 18 },
+            container: { backgroundColor: '#DC2626', borderRadius: 8 },
             text: { color: '#FFFFFF', fontWeight: 'bold' },
           },
           events: [],
         };
       } else if (marks[date].isHebrewDate) {
         marks[date].customStyles.container = {
-          backgroundColor: '#FF8C42', borderRadius: 18,
+          backgroundColor: '#FF8C42', borderRadius: 8,
           borderWidth: 2, borderColor: theme.colors.purple,
         };
         marks[date].customStyles.text = { color: '#FFFFFF', fontWeight: 'bold' };
@@ -185,7 +185,7 @@ const buildMarks = (
   } else {
     marks[todayStr] = {
       customStyles: {
-        container: { backgroundColor: '#22C55E', borderRadius: 18 },
+        container: { backgroundColor: '#22C55E', borderRadius: 8 },
         text: { color: '#FFFFFF', fontWeight: 'bold' },
       },
       events: [],
@@ -512,6 +512,7 @@ export const CalendarScreen: React.FC = () => {
     }
   };
 
+
   if (isLoading) {
     return <LoadingSpinner message="Loading calendar..." />;
   }
@@ -529,7 +530,7 @@ export const CalendarScreen: React.FC = () => {
       customStyles: {
         container: {
           backgroundColor: selectedDate === todayStr ? '#16A34A' : theme.colors.primary,
-          borderRadius: 18,
+          borderRadius: 8,
         },
         text: {
           color: '#FFFFFF',
@@ -541,6 +542,11 @@ export const CalendarScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* Background glow orbs for depth */}
+      <View style={styles.bgGlow1} pointerEvents="none" />
+      <View style={styles.bgGlow2} pointerEvents="none" />
+      <View style={styles.bgGlow3} pointerEvents="none" />
+
       <ScrollView
         refreshControl={
           <RefreshControl
@@ -551,45 +557,57 @@ export const CalendarScreen: React.FC = () => {
           />
         }
       >
-        {/* Calendar */}
-        <Calendar
-          key={calendarKey}
-          current={currentMonth}
-          onDayPress={handleDayPress}
-          onMonthChange={handleMonthChange}
-          markedDates={markedDatesWithSelection}
-          markingType="custom"
-          enableSwipeMonths={true}
-          renderHeader={() => (
-            <View style={styles.calendarHeader}>
-              <TouchableOpacity onPress={() => setMonthPickerVisible(true)}>
-                <Text style={styles.calendarHeaderMonth}>
-                  {MONTH_NAMES[currentMonthIndex]} ▾{'  '}
+        {/* Calendar in glass card */}
+        <View style={styles.calendarCard}>
+          {/* Inner shimmer highlight at top (frosted glass effect) */}
+          <View style={styles.calendarShimmer} pointerEvents="none" />
+          <Calendar
+            key={calendarKey}
+            current={currentMonth}
+            onDayPress={handleDayPress}
+            onMonthChange={handleMonthChange}
+            markedDates={markedDatesWithSelection}
+            markingType="custom"
+            enableSwipeMonths={true}
+
+            renderArrow={(direction) => (
+              <View style={styles.navArrow}>
+                <Text style={styles.navArrowText}>
+                  {direction === 'left' ? '‹' : '›'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setYearPickerVisible(true)}>
-                <Text style={styles.calendarHeaderYear}>{currentYear} ▾</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          theme={{
-            calendarBackground: theme.colors.backgroundSecondary,
-            textSectionTitleColor: theme.colors.textSecondary,
-            todayTextColor: '#22C55E',
-            dayTextColor: theme.colors.textPrimary,
-            textDisabledColor: theme.colors.disabled,
-            arrowColor: theme.colors.primary,
-            monthTextColor: theme.colors.textPrimary,
-            indicatorColor: theme.colors.primary,
-            textDayFontWeight: '400',
-            textMonthFontWeight: 'bold',
-            textDayHeaderFontWeight: '600',
-            textDayFontSize: 16,
-            textMonthFontSize: 18,
-            textDayHeaderFontSize: 13,
-          }}
-          style={styles.calendar}
-        />
+              </View>
+            )}
+            renderHeader={() => (
+              <View style={styles.calendarHeader}>
+                <TouchableOpacity onPress={() => setMonthPickerVisible(true)}>
+                  <Text style={styles.calendarHeaderMonth}>
+                    {MONTH_NAMES[currentMonthIndex]} ▾{'  '}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setYearPickerVisible(true)}>
+                  <Text style={styles.calendarHeaderYear}>{currentYear} ▾</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            theme={{
+              calendarBackground: 'transparent',
+              textSectionTitleColor: theme.colors.textSecondary,
+              todayTextColor: '#22C55E',
+              dayTextColor: theme.colors.textPrimary,
+              textDisabledColor: theme.colors.disabled,
+              arrowColor: theme.colors.primary,
+              monthTextColor: theme.colors.textPrimary,
+              indicatorColor: theme.colors.primary,
+              textDayFontWeight: '400',
+              textMonthFontWeight: 'bold',
+              textDayHeaderFontWeight: '600',
+              textDayFontSize: 16,
+              textMonthFontSize: 18,
+              textDayHeaderFontSize: 13,
+            }}
+            style={styles.calendar}
+          />
+        </View>
 
         {/* Year Picker Modal */}
         <Modal
@@ -667,22 +685,20 @@ export const CalendarScreen: React.FC = () => {
 
         {/* Toolbar: Today + Import + Export */}
         <View style={styles.toolbarRow}>
-          <TouchableOpacity style={styles.todayButton} onPress={handleTodayPress}>
-            <Text style={styles.todayButtonText}>📅 Today</Text>
+          <TouchableOpacity style={styles.glassButton} onPress={handleTodayPress}>
+            <Text style={styles.glassButtonText}>📅 Today</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.importButton} onPress={handleImportHebrewCalendar}>
-            <Text style={styles.importButtonIcon}>📥</Text>
-            <Text style={styles.importButtonText}>Import Calendar</Text>
+          <TouchableOpacity style={styles.glassButton} onPress={handleImportHebrewCalendar}>
+            <Text style={styles.glassButtonText}>📥 Import</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
-            <Text style={styles.exportButtonIcon}>📤</Text>
-            <Text style={styles.exportButtonText}>Export</Text>
+          <TouchableOpacity style={styles.glassButton} onPress={handleExport}>
+            <Text style={styles.glassButtonText}>📤 Export</Text>
           </TouchableOpacity>
         </View>
 
         {/* Selected Date Header */}
         <View style={styles.dateHeader}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.dateHeaderText}>
               {format(new Date(selectedDate + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
             </Text>
@@ -747,6 +763,13 @@ export const CalendarScreen: React.FC = () => {
         visible={isModalVisible}
         onClose={handleCloseModal}
         onUpdate={handleEventUpdate}
+        onDelete={(eventId) => {
+          const updatedEvents = events.filter((e) => getEventId(e) !== eventId);
+          setEvents(updatedEvents);
+          setMarkedDates(buildMarks(updatedEvents, hebrewDatesMap));
+          updateEventsForDate(selectedDate, updatedEvents);
+          handleCloseModal();
+        }}
       />
 
       {/* Create Event Modal */}
@@ -780,102 +803,151 @@ export const CalendarScreen: React.FC = () => {
   );
 };
 
+const GLASS_BG = 'rgba(255, 255, 255, 0.06)';
+const GLASS_BORDER = 'rgba(255, 255, 255, 0.13)';
+const GLASS_BLUE = 'rgba(59, 130, 246, 0.15)';
+const GLASS_BLUE_BORDER = 'rgba(96, 165, 250, 0.4)';
+const GLOW_SHADOW = {
+  shadowColor: '#3B82F6',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.35,
+  shadowRadius: 12,
+  elevation: 8,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#0A0E27',
+  },
+  // Background depth orbs
+  bgGlow1: {
+    position: 'absolute',
+    top: -100,
+    left: -80,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  bgGlow2: {
+    position: 'absolute',
+    bottom: 100,
+    right: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+  },
+  bgGlow3: {
+    position: 'absolute',
+    top: 260,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(59, 130, 246, 0.06)',
+  },
+  // Glass card wrapping the calendar
+  calendarCard: {
+    margin: theme.spacing.md,
+    marginBottom: 0,
+    borderRadius: 20,
+    backgroundColor: 'rgba(21, 27, 46, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+    overflow: 'hidden',
+    ...GLOW_SHADOW,
+  },
+  // Frosted glass shimmer at top of card
+  calendarShimmer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   calendar: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderRadius: 20,
+  },
+  // Blue pill nav arrows
+  navArrow: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    width: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navArrowText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    lineHeight: 24,
   },
   toolbarRow: {
     flexDirection: 'row',
     margin: theme.spacing.md,
+    marginTop: theme.spacing.sm,
     gap: theme.spacing.sm,
   },
-  todayButton: {
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
+  // Unified glass button for toolbar
+  glassButton: {
+    flex: 1,
+    backgroundColor: GLASS_BG,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+    paddingVertical: 10,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    ...theme.shadows.small,
   },
-  todayButtonText: {
+  glassButtonText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.textPrimary,
-  },
-  importButton: {
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    ...theme.shadows.small,
-  },
-  importButtonIcon: {
-    fontSize: 18,
-  },
-  importButtonText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.textPrimary,
-  },
-  exportButton: {
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    ...theme.shadows.small,
-  },
-  exportButtonIcon: {
-    fontSize: 18,
-  },
-  exportButtonText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.textSecondary,
+    color: '#CBD5E1',
   },
   dateHeader: {
-    backgroundColor: theme.colors.cardBackgroundAlt,
+    backgroundColor: GLASS_BLUE,
+    borderWidth: 1,
+    borderColor: GLASS_BLUE_BORDER,
     padding: theme.spacing.md,
     marginHorizontal: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: theme.spacing.sm,
+    ...GLOW_SHADOW,
   },
   dateHeaderText: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.textPrimary,
+    color: '#E2E8F0',
   },
   hebrewDateText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
-    color: '#FFB84D', // Gold/orange to match calendar marking
+    color: '#FFB84D',
     marginTop: theme.spacing.xs,
   },
   eventCount: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'rgba(99, 102, 241, 0.7)',
     borderRadius: theme.borderRadius.full,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(165, 180, 252, 0.4)',
+    marginLeft: theme.spacing.sm,
   },
   eventCountText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
-    color: theme.colors.textPrimary,
+    color: '#FFFFFF',
   },
   eventsList: {
     marginTop: theme.spacing.sm,
@@ -887,10 +959,11 @@ const styles = StyleSheet.create({
   emptyIcon: {
     fontSize: 64,
     marginBottom: theme.spacing.md,
+    opacity: 0.6,
   },
   emptyText: {
     fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+    color: 'rgba(148, 163, 184, 0.7)',
     textAlign: 'center',
   },
   bottomPadding: {
@@ -900,40 +973,49 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 28,
     right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    ...theme.shadows.medium,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.5)',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    elevation: 10,
   },
   fabIcon: {
     fontSize: 30,
-    color: theme.colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: theme.fontWeight.bold,
     lineHeight: 34,
   },
   moveBanner: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderWidth: 1,
+    borderColor: GLASS_BLUE_BORDER,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 14,
   },
   moveBannerText: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
-    color: '#FFFFFF',
+    color: '#BFDBFE',
     flex: 1,
   },
   moveBannerCancel: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
-    color: '#FFFFFF',
+    color: '#93C5FD',
     paddingHorizontal: theme.spacing.md,
   },
   calendarHeader: {
@@ -954,40 +1036,44 @@ const styles = StyleSheet.create({
   },
   yearPickerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   yearPickerContainer: {
-    backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(15, 20, 50, 0.97)',
+    borderRadius: 20,
     padding: theme.spacing.md,
-    width: 200,
-    ...theme.shadows.medium,
+    width: 220,
+    borderWidth: 1,
+    borderColor: GLASS_BLUE_BORDER,
+    ...GLOW_SHADOW,
   },
   yearPickerTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.bold,
-    color: theme.colors.textPrimary,
+    color: '#E2E8F0',
     textAlign: 'center',
     marginBottom: theme.spacing.sm,
   },
   yearPickerItem: {
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 10,
     marginVertical: 2,
   },
   yearPickerItemActive: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'rgba(99, 102, 241, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(165, 180, 252, 0.4)',
   },
   yearPickerItemText: {
     fontSize: theme.fontSize.lg,
-    color: theme.colors.textPrimary,
+    color: '#94A3B8',
     textAlign: 'center',
   },
   yearPickerItemTextActive: {
     fontWeight: theme.fontWeight.bold,
-    color: '#FFFFFF',
+    color: '#E0E7FF',
   },
 });

@@ -47,6 +47,7 @@ interface EditLocRow {
   endMin: string;
   endPeriod: 'AM' | 'PM';
   placeSearch: string;
+  isHouse?: boolean;
 }
 
 const parseTime24 = (t: string): { hour: string; min: string; period: 'AM' | 'PM' } => {
@@ -173,6 +174,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             startHour: s.hour, startMin: s.min, startPeriod: s.period,
             endHour: e.hour, endMin: e.min, endPeriod: e.period,
             placeSearch: '',
+            isHouse: loc.place === 'Private Home',
           };
         }));
       } else {
@@ -494,6 +496,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             startHour: s.hour, startMin: s.min, startPeriod: s.period,
             endHour: e.hour, endMin: e.min, endPeriod: e.period,
             placeSearch: '',
+            isHouse: loc.place === 'Private Home',
           };
         }));
       } else {
@@ -526,7 +529,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
     // Build locations for saveEventLocations
     const locationsToSave = editLocations.map((loc, i) => ({
-      place: loc.place.trim(),
+      place: loc.isHouse ? 'Private Home' : loc.place.trim(),
       address: loc.address.trim(),
       eventDate: loc.eventDate ? toISODate(loc.eventDate) : '',
       startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
@@ -1111,93 +1114,121 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.sm, marginBottom: 0 }]}>
                           Location {idx + 1}
                         </Text>
-                        {editLocations.length > 1 && (
-                          <TouchableOpacity onPress={() => {
-                            setOpenDropdownIdx(null);
-                            setEditLocations((prev) => prev.filter((_, i) => i !== idx));
-                          }}>
-                            <Text style={styles.removeLocationBtn}>✕</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-
-                      {/* Place combobox */}
-                      <View style={styles.placeComboRow}>
-                        <TouchableOpacity
-                          style={[styles.comboBox, openDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
-                          onPress={() => setOpenDropdownIdx(openDropdownIdx === idx ? null : idx)}
-                        >
-                          <View style={styles.comboBoxValue}>
-                            {loc.place
-                              ? <Text style={styles.comboBoxText}>{loc.place}</Text>
-                              : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
-                          </View>
-                          <Text style={styles.comboBoxArrow}>{openDropdownIdx === idx ? '▲' : '▼'}</Text>
-                        </TouchableOpacity>
-                        {loc.place ? (
-                          <TouchableOpacity onPress={() => updateLoc({ place: '', address: '' })}>
-                            <Text style={styles.searchClear}>✕</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-
-                      {/* Place dropdown */}
-                      {openDropdownIdx === idx && (
-                        <View style={styles.comboBoxDropdown}>
-                          <View style={styles.searchRow}>
-                            <TextInput
-                              style={styles.searchInput}
-                              value={loc.placeSearch}
-                              onChangeText={(t) => updateLoc({ placeSearch: t })}
-                              placeholder="Search or add place..."
-                              placeholderTextColor={theme.colors.textTertiary}
-                              returnKeyType="done"
-                              autoFocus
-                              onSubmitEditing={() => {
-                                if (canAdd) {
-                                  const p = loc.placeSearch.trim();
-                                  setCustomPlaces((prev) => [...prev, p]);
-                                  updateLoc({ place: p, placeSearch: '' });
-                                  savePlace(p, loc.address, userRegion);
-                                  setOpenDropdownIdx(null);
-                                }
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {/* Show house toggle only when no regular venue is selected */}
+                          {(!loc.place || loc.place === 'Private Home') && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                const updateLoc = (patch: Partial<EditLocRow>) =>
+                                  setEditLocations((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+                                updateLoc({ isHouse: !loc.isHouse, place: !loc.isHouse ? 'Private Home' : '', placeSearch: '' });
+                                setOpenDropdownIdx(null);
                               }}
-                            />
-                            {loc.placeSearch ? (
-                              <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}>
+                              style={[styles.houseToggle, loc.isHouse && styles.houseToggleActive]}
+                            >
+                              <Text style={[styles.houseToggleText, loc.isHouse && styles.houseToggleTextActive]}>
+                                🏠 House
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          {editLocations.length > 1 && (
+                            <TouchableOpacity onPress={() => {
+                              setOpenDropdownIdx(null);
+                              setEditLocations((prev) => prev.filter((_, i) => i !== idx));
+                            }}>
+                              <Text style={styles.removeLocationBtn}>✕</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Place combobox — hidden when isHouse */}
+                      {loc.isHouse ? (
+                        <View style={[styles.placeComboRow, { paddingVertical: 8 }]}>
+                          <Text style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.sm }}>
+                            🏠 Private Home
+                          </Text>
+                        </View>
+                      ) : (
+                        <>
+                          <View style={styles.placeComboRow}>
+                            <TouchableOpacity
+                              style={[styles.comboBox, openDropdownIdx === idx && styles.comboBoxOpen, styles.placeComboFlex]}
+                              onPress={() => setOpenDropdownIdx(openDropdownIdx === idx ? null : idx)}
+                            >
+                              <View style={styles.comboBoxValue}>
+                                {loc.place
+                                  ? <Text style={styles.comboBoxText}>{loc.place}</Text>
+                                  : <Text style={styles.comboBoxPlaceholder}>Select a place...</Text>}
+                              </View>
+                              <Text style={styles.comboBoxArrow}>{openDropdownIdx === idx ? '▲' : '▼'}</Text>
+                            </TouchableOpacity>
+                            {loc.place ? (
+                              <TouchableOpacity onPress={() => updateLoc({ place: '', address: '' })}>
                                 <Text style={styles.searchClear}>✕</Text>
                               </TouchableOpacity>
                             ) : null}
                           </View>
-                          <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
-                            {filtered.map((p) => (
-                              <TouchableOpacity
-                                key={p}
-                                style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
-                                onPress={() => {
-                                  updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '' });
-                                  setOpenDropdownIdx(null);
-                                }}
-                              >
-                                <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
-                              </TouchableOpacity>
-                            ))}
-                            {canAdd && (
-                              <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
-                                const p = loc.placeSearch.trim();
-                                setCustomPlaces((prev) => [...prev, p]);
-                                updateLoc({ place: p, placeSearch: '' });
-                                savePlace(p, loc.address, userRegion);
-                                setOpenDropdownIdx(null);
-                              }}>
-                                <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
-                              </TouchableOpacity>
-                            )}
-                            {filtered.length === 0 && !canAdd && (
-                              <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>
-                            )}
-                          </ScrollView>
-                        </View>
+
+                          {/* Place dropdown */}
+                          {openDropdownIdx === idx && (
+                            <View style={styles.comboBoxDropdown}>
+                              <View style={styles.searchRow}>
+                                <TextInput
+                                  style={styles.searchInput}
+                                  value={loc.placeSearch}
+                                  onChangeText={(t) => updateLoc({ placeSearch: t })}
+                                  placeholder="Search or add place..."
+                                  placeholderTextColor={theme.colors.textTertiary}
+                                  returnKeyType="done"
+                                  autoFocus
+                                  onSubmitEditing={() => {
+                                    if (canAdd) {
+                                      const p = loc.placeSearch.trim();
+                                      setCustomPlaces((prev) => [...prev, p]);
+                                      updateLoc({ place: p, placeSearch: '', isHouse: false });
+                                      savePlace(p, loc.address, userRegion);
+                                      setOpenDropdownIdx(null);
+                                    }
+                                  }}
+                                />
+                                {loc.placeSearch ? (
+                                  <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}>
+                                    <Text style={styles.searchClear}>✕</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                              <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
+                                {filtered.map((p) => (
+                                  <TouchableOpacity
+                                    key={p}
+                                    style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
+                                    onPress={() => {
+                                      updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '', isHouse: false });
+                                      setOpenDropdownIdx(null);
+                                    }}
+                                  >
+                                    <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                                {canAdd && (
+                                  <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
+                                    const p = loc.placeSearch.trim();
+                                    setCustomPlaces((prev) => [...prev, p]);
+                                    updateLoc({ place: p, placeSearch: '', isHouse: false });
+                                    savePlace(p, loc.address, userRegion);
+                                    setOpenDropdownIdx(null);
+                                  }}>
+                                    <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
+                                  </TouchableOpacity>
+                                )}
+                                {filtered.length === 0 && !canAdd && (
+                                  <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>
+                                )}
+                              </ScrollView>
+                            </View>
+                          )}
+                        </>
                       )}
 
                       {/* Address */}
@@ -1657,6 +1688,26 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.md,
     color: theme.colors.textSecondary,
     paddingHorizontal: theme.spacing.sm,
+  },
+  houseToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: 'transparent',
+  },
+  houseToggleActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: theme.colors.primary,
+  },
+  houseToggleText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+  },
+  houseToggleTextActive: {
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
   addLocationBtn: {
     marginTop: theme.spacing.md,
