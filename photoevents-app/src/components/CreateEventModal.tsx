@@ -1501,6 +1501,7 @@ const styles = StyleSheet.create({
     width: 24,
   },
   comboBoxItemText: {
+    flex: 1,
     fontSize: theme.fontSize.md,
     color: theme.colors.textSecondary,
   },
