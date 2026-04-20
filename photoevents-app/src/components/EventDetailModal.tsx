@@ -2177,11 +2177,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   comboBoxText: {
+    flex: 1,
     fontSize: theme.fontSize.md,
     color: theme.colors.textPrimary,
     fontWeight: theme.fontWeight.medium,
   },
   comboBoxPlaceholder: {
+    flex: 1,
     fontSize: theme.fontSize.md,
     color: theme.colors.textTertiary,
   },

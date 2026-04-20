@@ -1463,11 +1463,13 @@ const styles = StyleSheet.create({
     marginRight: theme.spacing.sm,
   },
   comboBoxText: {
+    flex: 1,
     fontSize: theme.fontSize.md,
     color: theme.colors.textPrimary,
     fontWeight: theme.fontWeight.medium,
   },
   comboBoxPlaceholder: {
+    flex: 1,
     fontSize: theme.fontSize.md,
     color: theme.colors.textTertiary,
   },
