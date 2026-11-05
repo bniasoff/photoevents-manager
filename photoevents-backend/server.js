@@ -258,6 +258,10 @@ app.post('/calendar/create-event', async (req, res) => {
     console.log('Using Photography Event calendar');
 
     // Create the event
+    // scheduledEndTime is the event's real end time, sent by the client. Only fall back
+    // to a 2-hour default when the booking has no end time set at all.
+    const endDateTime = eventData.scheduledEndTime
+      || new Date(new Date(eventData.scheduledTime).getTime() + 2 * 60 * 60 * 1000).toISOString();
     const event = {
       summary: eventData.name,
       location: eventData.location || '',
@@ -267,7 +271,7 @@ app.post('/calendar/create-event', async (req, res) => {
         timeZone: 'America/New_York',
       },
       end: {
-        dateTime: new Date(new Date(eventData.scheduledTime).getTime() + 2 * 60 * 60 * 1000).toISOString(),
+        dateTime: endDateTime,
         timeZone: 'America/New_York',
       },
     };
