@@ -128,6 +128,20 @@ export const exportToGoogleCalendar = async (
 
     const eventDate = new Date(year, month, day, hours, minutes, 0);
 
+    // The backend defaults to a 2-hour event when no end time is given, so the actual
+    // end time must be sent explicitly — otherwise every export came out 2 hours long
+    // regardless of the real duration. Rolls to the next day for an overnight event
+    // (e.g. 8:45 PM – 12:15 AM), matching the duration math used elsewhere in the app.
+    let scheduledEndTime: string | undefined;
+    if (event.End) {
+      const [endHour, endMinute] = event.End.split(':').map((v) => parseInt(v));
+      let endDate = new Date(year, month, day, endHour, endMinute, 0);
+      if (endDate.getTime() < eventDate.getTime()) {
+        endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+      }
+      scheduledEndTime = endDate.toISOString();
+    }
+
     const response = await fetch(`${BACKEND_URL}/calendar/create-event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -141,6 +155,7 @@ export const exportToGoogleCalendar = async (
           phone: event.Phone || '',
           notes: event.Info || '',
           scheduledTime: eventDate.toISOString(),
+          scheduledEndTime: scheduledEndTime || null,
           existingEventId: existingCalendarEventId || null, // backend deletes this first
         },
       }),

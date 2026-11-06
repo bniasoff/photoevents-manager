@@ -1,0 +1,234 @@
+table,id,original_address,street,city,state,zip_found,precision
+places_directory,6,1349 50th St Brooklyn NY,1349 50th St,Brooklyn,NY,11219,exact
+places_directory,7,5202 14th Ave Brooklyn NY,5202 14th Ave,Brooklyn,NY,11219,exact
+places_directory,9,1319 50th St Brooklyn NY,1319 50th St,Brooklyn,NY,11219,exact
+places_directory,10,1310 48th St Brooklyn NY,1310 48th St,Brooklyn,NY,11219,exact
+places_directory,12,1254 49th St Brooklyn NY,1254 49th St,Brooklyn,NY,11219,exact
+places_directory,13,1332 50th St Brooklyn NY,1332 50th St,Brooklyn,NY,11219,exact
+places_directory,14,1352 49th St Brooklyn NY,1352 49th St,Brooklyn,NY,11219,exact
+places_directory,16,4912 14th Ave Brooklyn NY,4912 14th Ave,Brooklyn,NY,11219,exact
+places_directory,17,4050 12th Ave Brooklyn NY,4050 12th Ave,Brooklyn,NY,11218,exact
+places_directory,19,1317 49th St Brooklyn NY,1317 49th St,Brooklyn,NY,11219,exact
+places_directory,20,1231 45th St Brooklyn NY,1231 45th St,Brooklyn,NY,11219,exact
+places_directory,21,1373 43rd St Brooklyn NY,1373 43rd St,Brooklyn,NY,11219,exact
+places_directory,23,4602 14th Ave Brooklyn NY,4602 14th Ave,Brooklyn,NY,11219,exact
+places_directory,24,4918 16th Ave Brooklyn NY,4918 16th Ave,Brooklyn,NY,11219,exact
+places_directory,25,1316 50th St Brooklyn NY,1316 50th St,Brooklyn,NY,11219,exact
+places_directory,27,4706 14th Ave Brooklyn NY,4706 14th Ave,Brooklyn,NY,11219,exact
+places_directory,28,1419 50th St Brooklyn NY,1419 50th St,Brooklyn,NY,11219,exact
+places_directory,30,4820 15th Ave Brooklyn NY,4820 15th Ave,Brooklyn,NY,11219,exact
+places_directory,31,4405 14th Ave Brooklyn NY,4405 14th Ave,Brooklyn,NY,11219,exact
+places_directory,32,1362 50th St Brooklyn NY,1362 50th St,Brooklyn,NY,11219,exact
+places_directory,33,4024 12th Ave Brooklyn NY,4024 12th Ave,Brooklyn,NY,11218,exact
+places_directory,35,5014 16th Ave Brooklyn NY,5014 16th Ave,Brooklyn,NY,11219,exact
+places_directory,36,1325 38th St Brooklyn NY,1325 38th St,Brooklyn,NY,11218,exact
+places_directory,38,5602 11th Ave Brooklyn NY,5602 11th Ave,Brooklyn,NY,11219,exact
+places_directory,39,4802 12th Ave Brooklyn NY,4802 12th Ave,Brooklyn,NY,11219,exact
+places_directory,40,5100 15th Ave Brooklyn NY,5100 15th Ave,Brooklyn,NY,11219,exact
+places_directory,42,18th Ave at 50th St Brooklyn NY,18th Ave at 50th St,Brooklyn,NY,(not found),
+places_directory,43,1820 53rd St Brooklyn NY,1820 53rd St,Brooklyn,NY,11204,exact
+places_directory,45,5902 14th Ave Brooklyn NY,5902 14th Ave,Brooklyn,NY,11219,exact
+places_directory,46,4622 14th Ave Brooklyn NY,4622 14th Ave,Brooklyn,NY,11219,exact
+places_directory,47,780 McDonald Ave Brooklyn NY,780 McDonald Ave,Brooklyn,NY,11218,exact
+places_directory,49,425 E 9th St Brooklyn NY,425 E 9th St,Brooklyn,NY,11218,exact
+places_directory,50,574 E 9th St Brooklyn NY,574 E 9th St,Brooklyn,NY,11218,exact
+places_directory,51,1721 Avenue J Brooklyn NY,1721 Avenue J,Brooklyn,NY,11230,exact
+places_directory,53,2810 Nostrand Ave Brooklyn NY,2810 Nostrand Ave,Brooklyn,NY,11229,exact
+places_directory,54,1981 Homecrest Ave Brooklyn NY,1981 Homecrest Ave,Brooklyn,NY,11229,exact
+places_directory,56,305 E 21st St Brooklyn NY,305 E 21st St,Brooklyn,NY,11226,exact
+places_directory,57,3415 Quentin Rd Brooklyn NY,3415 Quentin Rd,Brooklyn,NY,11234,exact
+places_directory,58,780 McDonald Ave Brooklyn NY,780 McDonald Ave,Brooklyn,NY,11218,exact
+places_directory,60,605 Ocean Pkwy Brooklyn NY,605 Ocean Pkwy,Brooklyn,NY,11218,exact
+places_directory,61,347 Ocean Pkwy Brooklyn NY,347 Ocean Pkwy,Brooklyn,NY,11218,exact
+places_directory,62,550 Ocean Pkwy Brooklyn NY,550 Ocean Pkwy,Brooklyn,NY,11218,exact
+places_directory,64,1266 Prospect Ave Brooklyn NY,1266 Prospect Ave,Brooklyn,NY,11218,exact
+places_directory,65,109 Clara St Brooklyn NY,109 Clara St,Brooklyn,NY,11218,exact
+places_directory,66,716 Ditmas Ave Brooklyn NY,716 Ditmas Ave,Brooklyn,NY,11218,exact
+places_directory,68,8224 23rd Ave Brooklyn NY,8224 23rd Ave,Brooklyn,NY,11214,exact
+places_directory,69,48 Bay 28th St Brooklyn NY,48 Bay 28th St,Brooklyn,NY,11214,exact
+places_directory,71,8669 Bay 16th St Brooklyn NY,8669 Bay 16th St,Brooklyn,NY,11214,exact
+places_directory,72,725 Avenue O Brooklyn NY,725 Avenue O,Brooklyn,NY,11230,exact
+places_directory,73,3311 Avenue S Brooklyn NY,3311 Avenue S,Brooklyn,NY,11234,exact
+places_directory,75,2122 Avenue S Brooklyn NY,2122 Avenue S,Brooklyn,NY,11229,exact
+places_directory,76,2119 Homecrest Ave Brooklyn NY,2119 Homecrest Ave,Brooklyn,NY,11229,exact
+places_directory,78,1302 Ocean Pkwy Brooklyn NY,1302 Ocean Pkwy,Brooklyn,NY,11230,exact
+places_directory,79,321 Avenue N Brooklyn NY,321 Avenue N,Brooklyn,NY,11230,exact
+places_directory,80,1703 Avenue J Brooklyn NY,1703 Avenue J,Brooklyn,NY,11230,exact
+places_directory,3,1325 38th St Brooklyn NY,1325 38th St,Brooklyn,NY,11218,exact
+places_directory,5,1315 43rd St Brooklyn NY,1315 43rd St,Brooklyn,NY,11219,exact
+places_directory,86,1478 East 10th St Brooklyn NY,1478 East 10th St,Brooklyn,NY,11230,exact
+places_directory,88,1143 East 19th St Brooklyn NY,1143 East 19th St,Brooklyn,NY,11230,exact
+places_directory,89,2920 Avenue J Brooklyn NY,2920 Avenue J,Brooklyn,NY,11210,exact
+places_directory,90,1694 Ocean Ave Brooklyn NY,1694 Ocean Ave,Brooklyn,NY,11230,exact
+places_directory,92,1401 Avenue M Brooklyn NY,1401 Avenue M,Brooklyn,NY,11230,exact
+places_directory,93,2605 Nostrand Ave Brooklyn NY,2605 Nostrand Ave,Brooklyn,NY,11210,exact
+places_directory,95,73 Forshay Rd area Brooklyn NY,73 Forshay Rd area,Brooklyn,NY,(not found),
+places_directory,96,1470 Ocean Pkwy Brooklyn NY,1470 Ocean Pkwy,Brooklyn,NY,11230,exact
+places_directory,97,129 Elmwood Ave Brooklyn NY,129 Elmwood Ave,Brooklyn,NY,11230,exact
+places_directory,99,108 Noble St Brooklyn NY,108 Noble St,Brooklyn,NY,11222,exact
+places_directory,100,520 Bedford Ave Brooklyn NY,520 Bedford Ave,Brooklyn,NY,10306,exact
+places_directory,101,106 Lee Ave Brooklyn NY,106 Lee Ave,Brooklyn,NY,11570,exact
+places_directory,102,205 Hewes St Brooklyn NY,205 Hewes St,Brooklyn,NY,11211,exact
+places_directory,104,19-25 Varet St Brooklyn NY,19-25 Varet St,Brooklyn,NY,11206,exact
+places_directory,105,572 Bedford Ave Brooklyn NY,572 Bedford Ave,Brooklyn,NY,10306,exact
+places_directory,107,567 Bedford Ave Brooklyn NY,567 Bedford Ave,Brooklyn,NY,11211,exact
+places_directory,108,205 Hewes St Brooklyn NY,205 Hewes St,Brooklyn,NY,11211,exact
+places_directory,109,75 Ross St Brooklyn NY,75 Ross St,Brooklyn,NY,11249,exact
+places_directory,111,195 Wilson St Brooklyn NY,195 Wilson St,Brooklyn,NY,11211,exact
+places_directory,114,792 Eastern Pkwy Brooklyn NY,792 Eastern Pkwy,Brooklyn,NY,11213,exact
+places_directory,115,306 Albany Ave Brooklyn NY,306 Albany Ave,Brooklyn,NY,11213,exact
+places_directory,116,309 New York Ave Brooklyn NY,309 NY Ave,Brooklyn,NY,14216,exact
+places_directory,118,456 Crown St Brooklyn NY,456 Crown St,Brooklyn,NY,11225,exact
+places_directory,119,570 Crown St Brooklyn NY,570 Crown St,Brooklyn,NY,11213,exact
+places_directory,120,563 Empire Blvd Brooklyn NY,563 Empire Blvd,Brooklyn,NY,11225,exact
+places_directory,122,680 Montgomery St Brooklyn NY,680 Montgomery St,Brooklyn,NY,11213,exact
+places_directory,123,310 Crown St Brooklyn NY,310 Crown St,Brooklyn,NY,11225,exact
+places_directory,124,1386 St Johns Pl Brooklyn NY,1386 St Johns Pl,Brooklyn,NY,11213,exact
+places_directory,125,398 Kingston Ave Brooklyn NY,398 Kingston Ave,Brooklyn,NY,11225,exact
+places_directory,127,885 Eastern Pkwy Brooklyn NY,885 Eastern Pkwy,Brooklyn,NY,11213,exact
+places_directory,128,1612 Carroll St Brooklyn NY,1612 Carroll St,Brooklyn,NY,11213,exact
+places_directory,130,1614 Carroll St Brooklyn NY,1614 Carroll St,Brooklyn,NY,11213,exact
+places_directory,131,1466 Union St Brooklyn NY,1466 Union St,Brooklyn,NY,11213,exact
+places_directory,132,770 Lefferts Ave Brooklyn NY,770 Lefferts Ave,Brooklyn,NY,11203,exact
+places_directory,133,556 Crown St Brooklyn NY,556 Crown St,Brooklyn,NY,11213,exact
+places_directory,135,824 Eastern Pkwy Brooklyn NY,824 Eastern Pkwy,Brooklyn,NY,11213,exact
+places_directory,136,579 Brooklyn Ave Brooklyn NY,579 Brooklyn Ave,Brooklyn,NY,11203,exact
+places_directory,137,580 Crown St Brooklyn NY,580 Crown St,Brooklyn,NY,11213,exact
+places_directory,139,1457 Union St Brooklyn NY,1457 Union St,Brooklyn,NY,11213,exact
+places_directory,140,305 Kingston Ave Brooklyn NY,305 Kingston Ave,Brooklyn,NY,11213,exact
+places_directory,142,1095 Bergen St Brooklyn NY,1095 Bergen St,Brooklyn,NY,11216,exact
+places_directory,148,661 N Main St Spring Valley NY,661 N Main St,Spring Valley,NY,10977,exact
+places_directory,153,100 S. Main St Spring Valley NY,100 S. Main St,Spring Valley,NY,10977,exact
+places_directory,154,24 Lime Kiln Rd Wesley Hills NY,24 Lime Kiln Rd,Wesley Hills,NY,10901,exact
+places_directory,156,18 Forshay Rd Chestnut Ridge NY,18 Forshay Rd,Chestnut Ridge,NY,(not found),
+places_directory,157,260 Saddle River Rd Airmont NY,260 Saddle River Rd,Airmont,NY,10952,exact
+places_directory,158,73 Forshay Rd Airmont NY,73 Forshay Rd,Airmont,NY,10982,city
+places_directory,82,1279 East 24th St Brooklyn NY,1279 East 24th St,Brooklyn,NY,11210,exact
+places_directory,84,1093 East 21st St Brooklyn NY,1093 East 21st St,Brooklyn,NY,11210,exact
+places_directory,85,2018 Avenue M Brooklyn NY,2018 Avenue M,Brooklyn,NY,11210,exact
+places_directory,167,527 West Central Ave Spring Valley NY,527 West Central Ave,Spring Valley,NY,10977,exact
+places_directory,221,18 Imperial Pl N Jackson NJ,18 Imperial Pl N,Jackson,NJ,08527,exact
+places_directory,222,411 Meadowood Rd Jackson NJ,411 Meadowood Rd,Jackson,NJ,08527,exact
+places_directory,224,46 Bennetts Mills Rd Jackson NJ,46 Bennetts Mills Rd,Jackson,NJ,08527,exact
+places_directory,225,Oak Forest Dr Jackson NJ,Oak Forest Dr,Jackson,NJ,08004,city
+places_directory,227,46 Bennetts Mills Rd Jackson NJ,46 Bennetts Mills Rd,Jackson,NJ,08527,exact
+places_directory,229,2312 Hunters Ct Toms River NJ,2312 Hunters Ct,Toms River,NJ,08755,exact
+places_directory,232,532 Lawrence Ave Manchester NJ,532 Lawrence Ave,Manchester,NJ,08757,exact
+places_directory,234,Holly Oaks area Manchester NJ,Holly Oaks area,Manchester,NJ,(not found),
+places_directory,235,3180 Renaissance Blvd Manchester NJ,3180 Renaissance Blvd,Manchester,NJ,08733,exact
+places_directory,237,1055 Neilson St Inwood NY,1055 Neilson St,Inwood,NY,11096,city
+places_directory,238,4 Dogwood Ln Lawrence NY,4 Dogwood Ln,Lawrence,NY,11559,exact
+places_directory,239,2 Rockaway Tpk Lawrence NY,2 Rockaway Tpk,Lawrence,NY,11559,exact
+places_directory,163,17 N Airmont Rd Airmont NY,17 N Airmont Rd,Airmont,NY,10901,exact
+places_directory,245,25 Central Ave Lawrence NY,25 Central Ave,Lawrence,NY,11559,exact
+places_directory,247,728 Empire Ave Cedarhurst NY,728 Empire Ave,Cedarhurst,NY,11516,city
+places_directory,248,508 Peninsula Blvd Cedarhurst NY,508 Peninsula Blvd,Cedarhurst,NY,11516,exact
+places_directory,250,8 Spruce St Lawrence NY,8 Spruce St,Lawrence,NY,13669,exact
+places_directory,251,1 Cedar Lawn Ave Lawrence NY,1 Cedar Lawn Ave,Lawrence,NY,11559,exact
+places_directory,252,859 Peninsula Blvd Woodmere NY,859 Peninsula Blvd,Woodmere,NY,11598,exact
+places_directory,254,140 Central Ave Lawrence NY,140 Central Ave,Lawrence,NY,11559,exact
+places_directory,255,395 Oakland Ave Cedarhurst NY,395 Oakland Ave,Cedarhurst,NY,11516,exact
+places_directory,256,613 Beach 9th St Far Rockaway NY,613 Beach 9th St,Far Rockaway,NY,11691,exact
+places_directory,258,147-02 76th Rd Kew Gardens Hills NY,147-02 76th Rd,Kew Gardens Hills,NY,11367,exact
+places_directory,259,147-19 73rd Ave Kew Gardens Hills NY,147-19 73rd Ave,Kew Gardens Hills,NY,11367,exact
+places_directory,261,147-37 70th Rd Kew Gardens Hills NY,147-37 70th Rd,Kew Gardens Hills,NY,11367,exact
+places_directory,262,144-34 72nd Dr Kew Gardens Hills NY,144-34 72nd Dr,Kew Gardens Hills,NY,11367,exact
+places_directory,263,137-58 71st Ave Kew Gardens Hills NY,137-58 71st Ave,Kew Gardens Hills,NY,11367,exact
+places_directory,265,82-17 124th St Kew Gardens NY,82-17 124th St,Kew Gardens,NY,11420,exact
+places_directory,266,118-24 82nd Ave Kew Gardens NY,118-24 82nd Ave,Kew Gardens,NY,11421,exact
+places_directory,290,371 S Prospect Ave Bergenfield NJ,371 S Prospect Ave,Bergenfield,NJ,07621,exact
+places_directory,292,1208 White Plains Rd Staten Island NY,1208 White Plains Rd,Staten Island,NY,10472,exact
+places_directory,293,Staten Island NY,,Staten Island,NY,(not found),
+places_directory,294,1466 Manor Road Staten Island NY,1466 Manor Road,Staten Island,NY,10314,exact
+places_directory,243,260 Central Ave Lawrence NY,260 Central Ave,Lawrence,NY,11559,exact
+places_directory,244,390 Broadway Lawrence NY,390 Broadway,Lawrence,NY,11559,exact
+places_directory,4,1415 54th St Brooklyn NY,1415 54th St,Brooklyn,NY,11219,exact
+places_directory,8,1581 52nd St Brooklyn NY,1581 52nd St,Brooklyn,NY,11219,exact
+places_directory,11,1324 50th St Brooklyn NY,1324 50th St,Brooklyn,NY,11219,exact
+places_directory,15,1237 48th St Brooklyn NY,1237 48th St,Brooklyn,NY,11219,exact
+places_directory,18,5000 13th Ave Brooklyn NY,5000 13th Ave,Brooklyn,NY,11219,exact
+places_directory,22,5110 14th Ave Brooklyn NY,5110 14th Ave,Brooklyn,NY,11219,exact
+places_directory,26,1240 51st St Brooklyn NY,1240 51st St,Brooklyn,NY,11219,exact
+places_directory,29,4502 14th Ave Brooklyn NY,4502 14th Ave,Brooklyn,NY,11219,exact
+places_directory,34,5409 18th Ave Brooklyn NY,5409 18th Ave,Brooklyn,NY,11204,exact
+places_directory,37,4915 10th Ave Brooklyn NY,4915 10th Ave,Brooklyn,NY,11219,exact
+places_directory,41,5301 16th Ave Brooklyn NY,5301 16th Ave,Brooklyn,NY,11204,exact
+places_directory,44,960 49th St Brooklyn NY,960 49th St,Brooklyn,NY,11219,exact
+places_directory,48,2100 Ocean Ave Brooklyn NY,2100 Ocean Ave,Brooklyn,NY,11779,exact
+places_directory,52,3714 18th Ave Brooklyn NY,3714 18th Ave,Brooklyn,NY,11218,exact
+places_directory,55,1625 Ocean Ave Brooklyn NY,1625 Ocean Ave,Brooklyn,NY,11210,exact
+places_directory,59,327 E 5th St Brooklyn NY,327 E 5th St,Brooklyn,NY,10003,exact
+places_directory,63,514 Dahill Rd Brooklyn NY,514 Dahill Rd,Brooklyn,NY,11218,exact
+places_directory,67,3909 15th Ave Brooklyn NY,3909 15th Ave,Brooklyn,NY,11218,exact
+places_directory,70,79 Bay 22nd St Brooklyn NY,79 Bay 22nd St,Brooklyn,NY,11214,exact
+places_directory,74,3315 Avenue N Brooklyn NY,3315 Avenue N,Brooklyn,NY,11234,exact
+places_directory,77,2002 Avenue S Brooklyn NY,2002 Avenue S,Brooklyn,NY,11229,exact
+places_directory,81,1564 Coney Island Ave Brooklyn NY,1564 Coney Island Ave,Brooklyn,NY,11230,exact
+places_directory,83,1205 Avenue J Brooklyn NY,1205 Avenue J,Brooklyn,NY,11230,exact
+places_directory,87,1412 Avenue M Brooklyn NY,1412 Avenue M,Brooklyn,NY,11230,exact
+places_directory,91,2913 Avenue L Brooklyn NY,2913 Avenue L,Brooklyn,NY,11210,exact
+places_directory,94,1305 Coney Island Ave Brooklyn NY,1305 Coney Island Ave,Brooklyn,NY,11230,exact
+places_directory,103,540 Bedford Ave Brooklyn NY,540 Bedford Ave,Brooklyn,NY,11249,exact
+places_directory,106,134 S 8th St Brooklyn NY,134 S 8th St,Brooklyn,NY,11211,exact
+places_directory,110,760 Bedford Ave Brooklyn NY,760 Bedford Ave,Brooklyn,NY,11205,exact
+places_directory,113,770 Eastern Pkwy Brooklyn NY,770 Eastern Pkwy,Brooklyn,NY,11213,exact
+places_directory,117,578 Albany Ave Brooklyn NY,578 Albany Ave,Brooklyn,NY,11203,exact
+places_directory,121,489 Empire Blvd Brooklyn NY,489 Empire Blvd,Brooklyn,NY,11225,exact
+places_directory,126,390 Kingston Ave Brooklyn NY,390 Kingston Ave,Brooklyn,NY,11225,exact
+places_directory,129,646 Empire Blvd Brooklyn NY,646 Empire Blvd,Brooklyn,NY,11213,exact
+places_directory,134,382 Crown St Brooklyn NY,382 Crown St,Brooklyn,NY,11225,exact
+places_directory,138,1185 Lincoln Pl Brooklyn NY,1185 Lincoln Pl,Brooklyn,NY,11213,exact
+places_directory,141,272 Kingston Ave Brooklyn NY,272 Kingston Ave,Brooklyn,NY,11213,exact
+places_directory,149,9 Truman Ave New Square NY,9 Truman Ave,New Square,NY,10977,exact
+places_directory,160,21 Madison Hill Rd Airmont NY,21 Madison Hill Rd,Airmont,NY,10901,exact
+places_directory,162,2 Dawn Ln Airmont NY,2 Dawn Ln,Airmont,NY,10901,exact
+places_directory,220,645 Cross St Jackson NJ,645 Cross St,Jackson,NJ,08527,exact
+places_directory,223,10 Cassville Rd Jackson NJ,10 Cassville Rd,Jackson,NJ,08527,exact
+places_directory,226,158 Brookwood Pkwy Jackson NJ,158 Brookwood Pkwy,Jackson,NJ,07831,exact
+places_directory,230,1488 Old Freehold Rd Toms River NJ,1488 Old Freehold Rd,Toms River,NJ,08753,exact
+places_directory,233,Lawrence Ave Manchester NJ,Lawrence Ave,Manchester,NJ,08757,exact
+places_directory,236,259 Doughty Blvd Inwood NY,259 Doughty Blvd,Inwood,NY,11096,exact
+places_directory,240,2 Rockaway Tpk Lawrence NY,2 Rockaway Tpk,Lawrence,NY,11559,exact
+places_directory,242,215 Central Ave Lawrence NY,215 Central Ave,Lawrence,NY,11559,exact
+places_directory,246,137 Lawrence Ave Inwood NY,137 Lawrence Ave,Inwood,NY,11096,exact
+places_directory,249,137 Cedarhurst Ave Cedarhurst NY,137 Cedarhurst Ave,Cedarhurst,NY,11516,exact
+places_directory,253,649 Hungry Harbor Rd Woodmere NY,649 Hungry Harbor Rd,Woodmere,NY,11581,exact
+places_directory,257,70-11 150th St Kew Gardens Hills NY,70-11 150th St,Kew Gardens Hills,NY,11367,exact
+places_directory,260,67-29 108th St Kew Gardens Hills NY,67-29 108th St,Kew Gardens Hills,NY,11375,exact
+places_directory,264,144-02 68th Dr Kew Gardens Hills NY,144-02 68th Dr,Kew Gardens Hills,NY,11367,exact
+places_directory,267,141-55 77th Rd Kew Gardens Hills NY,141-55 77th Rd,Kew Gardens Hills,NY,11415,exact
+places_directory,291,36 Rector Ct Bergenfield NJ,36 Rector Ct,Bergenfield,NJ,07621,exact
+places_directory,161,9 Sumter Rd Airmont NY,9 Sumter Rd,Airmont,NY,10952,exact
+places_directory,159,22 Rustic Dr Airmont NY,22 Rustic Dr,Airmont,NY,10952,exact
+places_directory,241,6 Herrick Dr Lawrence NY,6 Herrick Dr,Lawrence,NY,11559,exact
+places_directory,1,4405 14th Ave Brooklyn NY,4405 14th Ave,Brooklyn,NY,11219,exact
+places_directory,155,40 Campbell Ave Airmont NY,40 Campbell Ave,Airmont,NY,10901,exact
+events,68fec2ed-68aa-4b1b-bf81-9b3b8146b0e7,"1 American Dream Way, East Rutherford, NJ",1 American Dream Way,East Rutherford,NJ,07073,exact
+events,c0392435-c7cc-4b81-be7e-71b3d1b181ad,"1195 North Maple Ave, Tom's River",1195 North Maple Ave,Tom's River,NJ,(not found),
+events,651bd17f-e6fc-41e8-844d-76a38b99c3ce,"1205 Maxim Southard Road,Howell, NJ",1205 Maxim Southard Road,Howell,NJ,07731,exact
+events,240036e5-4960-4283-86e2-3b8377f5ec0d,"70 Amboy Road,Morganville,NJ",70 Amboy Road,Morganville,NJ,07747,city
+events,db4d8c25-72e1-42de-bddb-c0410e36e913,", 70 Savannah Road, Jackson, NJ 08701",70 Savannah Road,Jackson,NJ,08527,exact
+events,c1accb8a-5388-4e01-b0c8-06d2374d67c6,"Calloway Street, Howell, NJ",Calloway Street,Howell,NJ,07831,exact
+events,ec8c3698-d3a0-48a6-a153-6293753877ff,"15 Widerman St, Spring Valley, NY",15 Widerman St,Spring Valley,NY,10977,city
+events,3db27e69-9b42-41d7-a220-195cd4116576,"8 Prince Way, Jackson New Jersey",8 Prince Way,Jackson,NJ,08527,exact
+events,a82f0493-99d1-4406-bcb2-90a5c9c607cb,"1563 Beaver Hollow Drive , Toms River NJ,  08701",1563 Beaver Hollow Drive,Toms River,NJ,08755,exact
+events,4fe709bc-8ec6-4f7f-a9b3-d26765031fe9,"26 David lane, Howell",26 David lane,Howell,NJ,(not found),
+events,fa26fd97-f357-4707-9461-e60d830d425f,"200 Van Zile Road, Brick Nj",200 Van Zile Road,Brick,NJ,08724,exact
+events,f53bd234-1b4a-4553-91e8-0729d6ef37cf,"5 Merdian Road, Eatontown, NJ 08701, USA",5 Merdian Road,Eatontown,NJ,07724,city
+events,e2fc6850-ec26-4f15-a4c2-48a591eff94d,"8 Cortelyou, Jackson, NJ 08701, USA",8 Cortelyou,Jackson,NJ,08527,exact
+events,7be306f2-790e-44ed-9e7a-bdb2167fae91,", 5 Brianwood Court, Jackson, NJ 08701",5 Brianwood Court,Jackson,NJ,08004,city
+event_locations,2cd4e5d7-ef3e-4d6f-917d-1b204f424dbb,", 70 Savannah Road, Jackson, NJ 08701",70 Savannah Road,Jackson,NJ,08527,exact
+event_locations,e2d9b4d0-71fd-46dc-8931-358a210266a5,"Calloway Street, Howell, NJ",Calloway Street,Howell,NJ,07831,exact
+event_locations,d9980bef-671c-4440-aec5-a3b827bba905,"8 Prince Way, Jackson New Jersey",8 Prince Way,Jackson,NJ,08527,exact
+event_locations,52055714-20ff-4c54-b597-1153c519f2bb,"1563 Beaver Hollow Drive , Toms River NJ,  08701",1563 Beaver Hollow Drive,Toms River,NJ,08755,exact
+event_locations,c53a06ff-b0ba-4b85-a17e-e48e0b624727,"15 Widerman St, Spring Valley, NY",15 Widerman St,Spring Valley,NY,10977,city
+event_locations,b8c821b2-f155-4740-ae48-b5c4d99d16f4,"26 David lane, Howell",26 David lane,Howell,NJ,(not found),
+event_locations,cfd6e66e-49d0-496c-bbba-2a85dae7276d,"5 Merdian Road, Eatontown, NJ 08701, USA",5 Merdian Road,Eatontown,NJ,07724,city
+event_locations,005d5385-f4b9-4f47-a916-4023c8bf4054,"8 Cortelyou, Jackson, NJ 08701, USA",8 Cortelyou,Jackson,NJ,08527,exact
+event_locations,9f67a85b-3fa5-4414-88d0-0957f4bbac23,"2116 Discovery Way, Tom's River, NJ",2116 Discovery Way,Tom's River,NJ,(not found),
+event_locations,de5b4c6f-503d-4dcd-843c-095e15649d6f,"1195 North Maple Ave, Tom's River",1195 North Maple Ave,Tom's River,NJ,(not found),
+event_locations,52c4c358-2345-429f-94b8-fda12d3f1df4,"70 Amboy Road,Morganville,NJ",70 Amboy Road,Morganville,NJ,07747,city
+event_locations,ceee0062-10e5-49c8-b77d-2cb014590754,"1205 Maxim Southard Road,Howell, NJ",1205 Maxim Southard Road,Howell,NJ,07731,exact
+event_locations,8313b899-9b2f-48e4-98a6-c209ccb9798e,"1 American Dream Way, East Rutherford, NJ",1 American Dream Way,East Rutherford,NJ,07073,exact
+event_locations,f888be4c-65b4-43fa-ab93-b0ba6b9f1a84,"200 Van Zile Road, Brick Nj",200 Van Zile Road,Brick,NJ,08724,exact
+event_locations,a4377ba6-020c-4d48-8362-8761a97f3653,", 5 Brianwood Court, Jackson, NJ 08701",5 Brianwood Court,Jackson,NJ,08004,city

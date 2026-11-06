@@ -3,6 +3,10 @@ export interface EventLocation {
   eventId: string;
   place: string;
   address: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
   eventDate: string;   // YYYY-MM-DD or ''
   startTime: string;   // HH:MM:SS or ''
   endTime: string;     // HH:MM:SS or ''
@@ -16,6 +20,10 @@ export interface Event {
   Name: string;
   Place: string;
   Address: string;
+  Street?: string;
+  City?: string;
+  State?: string;
+  Zip?: string;
   Charge: string | number;
   Payment: string | number;
   Bal?: string;

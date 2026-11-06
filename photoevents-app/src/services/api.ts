@@ -1,19 +1,27 @@
 import { supabase } from '../config/supabase';
 import { Event, EventLocation } from '../types/Event';
+import { splitAddress, buildAddress, DEFAULT_ADDRESS, REGION_DEFAULTS, AddressParts } from '../utils/eventHelpers';
 
 /**
  * Map Supabase event_locations row to EventLocation
  */
-const mapLocation = (row: any): EventLocation => ({
-  id: row.id,
-  eventId: row.event_id,
-  place: row.place || '',
-  address: row.address || '',
-  eventDate: row.event_date || '',
-  startTime: row.start_time || '',
-  endTime: row.end_time || '',
-  sortOrder: row.sort_order ?? 0,
-});
+const mapLocation = (row: any): EventLocation => {
+  const fallbackParts = splitAddress(row.address);
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    place: row.place || '',
+    address: row.address || '',
+    street: row.street || fallbackParts.street,
+    city: row.city || fallbackParts.city,
+    state: row.state || fallbackParts.state,
+    zip: row.zip || fallbackParts.zip,
+    eventDate: row.event_date || '',
+    startTime: row.start_time || '',
+    endTime: row.end_time || '',
+    sortOrder: row.sort_order ?? 0,
+  };
+};
 
 /**
  * Map Supabase row to Event format
@@ -26,6 +34,10 @@ const mapSupabaseToEvent = (row: any): Event => {
     Name: row.name || '',
     Place: row.place || '',
     Address: row.address || '',
+    Street: row.street || splitAddress(row.address).street,
+    City: row.city || splitAddress(row.address).city,
+    State: row.state || splitAddress(row.address).state,
+    Zip: row.zip || splitAddress(row.address).zip,
     Phone: row.phone || '',
     Phone2: row.phone2 || '',
     Phone3: row.phone3 || '',
@@ -71,6 +83,10 @@ const mapEventToSupabase = (updates: Partial<Event>): any => {
   if (updates.Name !== undefined) supabaseUpdates.name = updates.Name;
   if (updates.Place !== undefined) supabaseUpdates.place = updates.Place;
   if (updates.Address !== undefined) supabaseUpdates.address = updates.Address;
+  if (updates.Street !== undefined) supabaseUpdates.street = updates.Street;
+  if (updates.City !== undefined) supabaseUpdates.city = updates.City;
+  if (updates.State !== undefined) supabaseUpdates.state = updates.State;
+  if (updates.Zip !== undefined) supabaseUpdates.zip = updates.Zip;
   if (updates.Phone !== undefined) supabaseUpdates.phone = updates.Phone;
   if (updates.Phone2 !== undefined) supabaseUpdates.phone2 = updates.Phone2;
   if (updates.Phone3 !== undefined) supabaseUpdates.phone3 = updates.Phone3;
@@ -194,38 +210,51 @@ export const createEvent = async (eventData: Partial<Event>): Promise<Event> => 
   }
 };
 
+export interface PlaceRecord extends AddressParts {
+  address: string;
+}
+
+const toPlaceRecord = (r: any, region: string): PlaceRecord => {
+  const fallback = REGION_DEFAULTS[region] || DEFAULT_ADDRESS;
+  const parsed = splitAddress(r.address, fallback);
+  return {
+    address: r.address || '',
+    street: r.street || parsed.street,
+    city: r.city || parsed.city,
+    state: r.state || parsed.state,
+    zip: r.zip || parsed.zip,
+  };
+};
+
 /**
  * Fetch places from places_directory filtered by region.
  * Lakewood also merges historical event places.
  */
-export const fetchPlaces = async (region: string = 'lakewood'): Promise<Record<string, string>> => {
+export const fetchPlaces = async (region: string = 'lakewood'): Promise<Record<string, PlaceRecord>> => {
   try {
-    const map: Record<string, string> = {};
+    const map: Record<string, PlaceRecord> = {};
 
     if (region === 'lakewood') {
       // Lakewood: directory venues + full event history
       const [eventsRes, dirRes] = await Promise.all([
-        supabase.from('events').select('place, address').order('place'),
-        supabase.from('places_directory').select('name, address').eq('region', 'lakewood').order('name'),
+        supabase.from('events').select('place, address, street, city, state, zip').order('place'),
+        supabase.from('places_directory').select('name, address, street, city, state, zip').eq('region', 'lakewood').order('name'),
       ]);
       (eventsRes.data || []).forEach((r: any) => {
         const p = (r.place || '').trim();
-        const a = (r.address || '').trim();
-        if (p && map[p] === undefined) map[p] = a;
+        if (p && map[p] === undefined) map[p] = toPlaceRecord(r, 'lakewood');
       });
       (dirRes.data || []).forEach((r: any) => {
         const p = (r.name || '').trim();
-        const a = (r.address || '').trim();
-        if (p) map[p] = a;
+        if (p) map[p] = toPlaceRecord(r, 'lakewood');
       });
     } else {
       // All other regions: places_directory filtered by region only
       const { data } = await supabase
-        .from('places_directory').select('name, address').eq('region', region).order('name');
+        .from('places_directory').select('name, address, street, city, state, zip').eq('region', region).order('name');
       (data || []).forEach((r: any) => {
         const p = (r.name || '').trim();
-        const a = (r.address || '').trim();
-        if (p) map[p] = a;
+        if (p) map[p] = toPlaceRecord(r, region);
       });
     }
 
@@ -239,13 +268,77 @@ export const fetchPlaces = async (region: string = 'lakewood'): Promise<Record<s
 /**
  * Save a new place to places_directory (upsert by name).
  */
-export const savePlace = async (name: string, address: string, region: string = 'lakewood'): Promise<void> => {
+export const savePlace = async (name: string, parts: AddressParts, region: string = 'lakewood'): Promise<void> => {
   try {
+    const address = buildAddress(parts);
     await supabase
       .from('places_directory')
-      .upsert({ name: name.trim(), address: address.trim(), region }, { onConflict: 'name' });
+      .upsert(
+        { name: name.trim(), address, street: parts.street.trim(), city: parts.city.trim(), state: parts.state.trim(), zip: parts.zip.trim(), region },
+        { onConflict: 'name' }
+      );
   } catch (error) {
     console.error('Error saving place:', error);
+  }
+};
+
+/**
+ * Delete a place from places_directory (by exact name match).
+ */
+export const deletePlace = async (name: string): Promise<void> => {
+  const { error } = await supabase
+    .from('places_directory')
+    .delete()
+    .eq('name', name);
+
+  if (error) {
+    console.error('Error deleting place:', error);
+    throw new Error('Failed to delete place. Please try again.');
+  }
+};
+
+/**
+ * Fetch all categories from the shared `categories` table, in display order.
+ */
+export const fetchCategories = async (): Promise<string[]> => {
+  try {
+    const { data } = await supabase.from('categories').select('name').order('sort_order');
+    return (data || []).map((r: any) => r.name).filter(Boolean);
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+};
+
+/**
+ * Save a new category (upsert by name). Placed just before the pinned 'Other'
+ * entry (sort_order 1000) so custom categories stay above it.
+ */
+export const saveCategory = async (name: string): Promise<void> => {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  try {
+    const { data } = await supabase
+      .from('categories')
+      .select('sort_order')
+      .lt('sort_order', 1000)
+      .order('sort_order', { ascending: false })
+      .limit(1);
+    const nextOrder = ((data && data[0]?.sort_order) ?? 0) + 1;
+    await supabase.from('categories').upsert({ name: trimmed, sort_order: nextOrder }, { onConflict: 'name' });
+  } catch (error) {
+    console.error('Error saving category:', error);
+  }
+};
+
+/**
+ * Delete a category from the shared `categories` table (by exact name match).
+ */
+export const deleteCategory = async (name: string): Promise<void> => {
+  const { error } = await supabase.from('categories').delete().eq('name', name);
+  if (error) {
+    console.error('Error deleting category:', error);
+    throw new Error('Failed to delete category. Please try again.');
   }
 };
 
@@ -331,6 +424,10 @@ export const saveEventLocations = async (
     event_id: eventId,
     place: loc.place,
     address: loc.address,
+    street: loc.street || '',
+    city: loc.city || '',
+    state: loc.state || '',
+    zip: loc.zip || '',
     event_date: loc.eventDate || '',
     start_time: loc.startTime || '',
     end_time: loc.endTime || '',

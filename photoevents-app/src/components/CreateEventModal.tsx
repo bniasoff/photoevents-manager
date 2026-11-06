@@ -14,7 +14,8 @@ import { Calendar } from 'react-native-calendars';
 import { Event } from '../types/Event';
 import { theme } from '../theme/theme';
 import { getCategoryIcon } from '../utils/categoryHelpers';
-import { createEvent, updateEvent, fetchPlaces, saveEventLocations, savePlace } from '../services/api';
+import { createEvent, updateEvent, fetchPlaces, saveEventLocations, savePlace, deletePlace, fetchCategories, saveCategory, deleteCategory, PlaceRecord } from '../services/api';
+import { splitAddress, buildAddress, REGION_DEFAULTS, DEFAULT_ADDRESS } from '../utils/eventHelpers';
 import { getUserLocationPreference, getReminderEnabled, getReminderMinutes } from '../services/navigationPreference';
 import { schedulePreEventReminder } from '../services/notificationService';
 import {
@@ -25,7 +26,10 @@ import {
 
 interface ExtraLocRow {
   place: string;
-  address: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
   eventDate: string;        // MM/DD/YYYY or ''
   startHour: string;
   startMin: string;
@@ -34,6 +38,10 @@ interface ExtraLocRow {
   endMin: string;
   endPeriod: 'AM' | 'PM';
   placeSearch: string;
+  newPlaceStreet?: string;
+  newPlaceCity?: string;
+  newPlaceState?: string;
+  newPlaceZip?: string;
   isHouse?: boolean;
 }
 
@@ -65,7 +73,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   onEventCreated,
 }) => {
   const [category, setCategory] = useState<string | null>(null);
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [dbCategories, setDbCategories] = useState<string[] | null>(null);
   const [newCategoryText, setNewCategoryText] = useState('');
   const [startHour, setStartHour] = useState('');
   const [startMin, setStartMin] = useState('');
@@ -75,7 +83,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [endPeriod, setEndPeriod] = useState<'AM' | 'PM'>('PM');
   const [name, setName] = useState('');
   const [place, setPlace] = useState('');
-  const [address, setAddress] = useState('');
+  const [street, setStreet] = useState(DEFAULT_ADDRESS.street);
+  const [city, setCity] = useState(DEFAULT_ADDRESS.city);
+  const [addrState, setAddrState] = useState(DEFAULT_ADDRESS.state);
+  const [zip, setZip] = useState(DEFAULT_ADDRESS.zip);
   const [extraLocations, setExtraLocations] = useState<ExtraLocRow[]>([]);
   const [openExtraDropdownIdx, setOpenExtraDropdownIdx] = useState<number | null>(null);
   const [phone, setPhone] = useState('');
@@ -94,7 +105,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [isHouseMain, setIsHouseMain] = useState(false);
   const [customPlaces, setCustomPlaces] = useState<string[]>([]);
   const [newPlaceText, setNewPlaceText] = useState('');
-  const [dbPlaces, setDbPlaces] = useState<Record<string, string> | null>(null);
+  const [newPlaceStreet, setNewPlaceStreet] = useState('');
+  const [newPlaceCity, setNewPlaceCity] = useState('');
+  const [newPlaceState, setNewPlaceState] = useState('');
+  const [newPlaceZip, setNewPlaceZip] = useState('');
+  const [dbPlaces, setDbPlaces] = useState<Record<string, PlaceRecord> | null>(null);
   const [showCreatedToast, setShowCreatedToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [datePickerLocIdx, setDatePickerLocIdx] = useState<number | null>(null);
@@ -102,7 +117,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const scrollRef = useRef<ScrollView | null>(null);
   const placeYRef = useRef<number>(0);
+  const addressYRef = useRef<number>(0);
+  const extraLocationYRefs = useRef<number[]>([]);
   const searchInputRef = useRef<TextInput | null>(null);
+
+  const scrollToY = (y: number) => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(y - 40, 0), animated: true });
+    }, 100);
+  };
 
   useEffect(() => {
     if (visible) {
@@ -112,17 +135,29 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           setDbPlaces(map); // always set — even empty — so fallback to Lakewood doesn't trigger
         });
       });
+      fetchCategories().then(setDbCategories);
     }
   }, [visible]);
 
   useEffect(() => {
     if (isPlaceOpen) {
+      const regionDefault = REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS;
+      setNewPlaceStreet('');
+      setNewPlaceCity(regionDefault.city);
+      setNewPlaceState(regionDefault.state);
+      setNewPlaceZip(regionDefault.zip);
       setTimeout(() => {
         scrollRef.current?.scrollTo({ y: placeYRef.current - 40, animated: true });
         searchInputRef.current?.focus();
       }, 100);
     }
   }, [isPlaceOpen]);
+
+  useEffect(() => {
+    if (openExtraDropdownIdx !== null) {
+      scrollToY(extraLocationYRefs.current[openExtraDropdownIdx] ?? 0);
+    }
+  }, [openExtraDropdownIdx]);
 
   const categories: string[] = [
     'Bar Mitzvah',
@@ -158,6 +193,32 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     'Yeshiva',
     'Yorzeit',
   ];
+
+  // dbCategories=null means still loading; only fall back to the hardcoded list while loading
+  const effectiveCategories = dbCategories !== null ? dbCategories : categories;
+
+  const handleDeleteCategory = (name: string) => {
+    Alert.alert(
+      'Delete Category',
+      `Remove "${name}" from the category list? This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCategory(name);
+              setDbCategories((prev) => (prev || []).filter((c) => c !== name));
+              if (category === name) setCategory(null);
+            } catch (err) {
+              Alert.alert('Error', 'Failed to delete category. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const places: string[] = [
     'Ahavas Yonoson',
@@ -340,7 +401,36 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   // dbPlaces=null means still loading; only fall back to hardcoded Lakewood list while loading
   const effectivePlaces = dbPlaces !== null ? Object.keys(dbPlaces).sort() : places;
-  const effectiveAddresses = dbPlaces !== null ? dbPlaces : placeAddresses;
+  const getPlaceParts = (p: string) =>
+    dbPlaces !== null ? dbPlaces[p] : (placeAddresses[p] ? splitAddress(placeAddresses[p]) : undefined);
+
+  const handleDeletePlace = (name: string) => {
+    Alert.alert(
+      'Delete Place',
+      `Remove "${name}" and its address from the places directory? This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePlace(name);
+              setDbPlaces((prev) => {
+                if (!prev) return prev;
+                const next = { ...prev };
+                delete next[name];
+                return next;
+              });
+              setCustomPlaces((prev) => prev.filter((p) => p !== name));
+            } catch (err) {
+              Alert.alert('Error', 'Failed to delete place. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const to24Hour = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
     let h = parseInt(hour) || 0;
@@ -373,11 +463,21 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (!isHouseMain && place.trim() && !street.trim()) {
+      Alert.alert('Address Required', `Please enter a street address for "${place.trim()}".`);
+      return;
+    }
+    const missingExtra = extraLocations.find((loc) => !loc.isHouse && loc.place.trim() && !loc.street.trim());
+    if (missingExtra) {
+      Alert.alert('Address Required', `Please enter a street address for "${missingExtra.place.trim()}".`);
+      return;
+    }
     setIsSaving(true);
     try {
       const startTime = startHour ? to24Hour(startHour, startMin, startPeriod) : '';
       const endTime = endHour ? to24Hour(endHour, endMin, endPeriod) : '';
       const eventDate = `${selectedDate}T${startTime || '00:00:00'}`;
+      const mainParts = { street: street.trim(), city: city.trim(), state: addrState.trim(), zip: zip.trim() };
 
       const newEvent = await createEvent({
         Name: name.trim(),
@@ -386,11 +486,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         Start: startTime,
         End: endTime,
         Place: isHouseMain ? 'Private Home' : place.trim(),
-        Address: address.trim(),
+        Address: isHouseMain ? '' : buildAddress(mainParts),
+        Street: isHouseMain ? '' : mainParts.street,
+        City: isHouseMain ? '' : mainParts.city,
+        State: isHouseMain ? '' : mainParts.state,
+        Zip: isHouseMain ? '' : mainParts.zip,
         Place2: extraLocations[0]?.isHouse ? 'Private Home' : (extraLocations[0]?.place.trim() || ''),
-        Address2: extraLocations[0]?.address.trim() || '',
+        Address2: extraLocations[0] ? (extraLocations[0].isHouse ? '' : buildAddress({ street: extraLocations[0].street.trim(), city: extraLocations[0].city.trim(), state: extraLocations[0].state.trim(), zip: extraLocations[0].zip.trim() })) : '',
         Place3: extraLocations[1]?.isHouse ? 'Private Home' : (extraLocations[1]?.place.trim() || ''),
-        Address3: extraLocations[1]?.address.trim() || '',
+        Address3: extraLocations[1] ? (extraLocations[1].isHouse ? '' : buildAddress({ street: extraLocations[1].street.trim(), city: extraLocations[1].city.trim(), state: extraLocations[1].state.trim(), zip: extraLocations[1].zip.trim() })) : '',
         Phone: phone.trim(),
         Phone2: phone2.trim(),
         Phone3: phone3.trim(),
@@ -407,15 +511,33 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
       // Save to event_locations table
       const allLocations = [
-        { place: isHouseMain ? 'Private Home' : place.trim(), address: address.trim(), eventDate: selectedDate, startTime, endTime, sortOrder: 0 },
-        ...extraLocations.map((loc, i) => ({
-          place: loc.isHouse ? 'Private Home' : loc.place.trim(),
-          address: loc.address.trim(),
-          eventDate: loc.eventDate ? toISODateCreate(loc.eventDate) : '',
-          startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
-          endTime: loc.endHour ? to24Hour(loc.endHour, loc.endMin, loc.endPeriod) : '',
-          sortOrder: i + 1,
-        })),
+        {
+          place: isHouseMain ? 'Private Home' : place.trim(),
+          address: isHouseMain ? '' : buildAddress(mainParts),
+          street: isHouseMain ? '' : mainParts.street,
+          city: isHouseMain ? '' : mainParts.city,
+          state: isHouseMain ? '' : mainParts.state,
+          zip: isHouseMain ? '' : mainParts.zip,
+          eventDate: selectedDate,
+          startTime,
+          endTime,
+          sortOrder: 0,
+        },
+        ...extraLocations.map((loc, i) => {
+          const parts = { street: loc.street.trim(), city: loc.city.trim(), state: loc.state.trim(), zip: loc.zip.trim() };
+          return {
+            place: loc.isHouse ? 'Private Home' : loc.place.trim(),
+            address: loc.isHouse ? '' : buildAddress(parts),
+            street: loc.isHouse ? '' : parts.street,
+            city: loc.isHouse ? '' : parts.city,
+            state: loc.isHouse ? '' : parts.state,
+            zip: loc.isHouse ? '' : parts.zip,
+            eventDate: loc.eventDate ? toISODateCreate(loc.eventDate) : '',
+            startTime: loc.startHour ? to24Hour(loc.startHour, loc.startMin, loc.startPeriod) : '',
+            endTime: loc.endHour ? to24Hour(loc.endHour, loc.endMin, loc.endPeriod) : '',
+            sortOrder: i + 1,
+          };
+        }),
       ];
       try { await saveEventLocations(newEvent.id, allLocations); } catch (e) { console.warn('saveEventLocations failed:', e); }
 
@@ -495,7 +617,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setEndPeriod('PM');
     setName('');
     setPlace('');
-    setAddress('');
+    setStreet(DEFAULT_ADDRESS.street);
+    setCity(DEFAULT_ADDRESS.city);
+    setAddrState(DEFAULT_ADDRESS.state);
+    setZip(DEFAULT_ADDRESS.zip);
+    setNewPlaceText('');
+    setNewPlaceStreet('');
+    setNewPlaceCity('');
+    setNewPlaceState('');
+    setNewPlaceZip('');
     setIsHouseMain(false);
     setExtraLocations([]);
     setOpenExtraDropdownIdx(null);
@@ -602,9 +732,18 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
             {isCategoryOpen && (() => {
               const search = categorySearch.toLowerCase();
-              const allCats = [...categories, ...customCategories];
-              const filteredCats = search ? allCats.filter((c) => c.toLowerCase().includes(search)) : allCats;
-              const canAddNew = newCategoryText.trim() && !allCats.some((c) => c.toLowerCase() === newCategoryText.trim().toLowerCase());
+              const filteredCats = search ? effectiveCategories.filter((c) => c.toLowerCase().includes(search)) : effectiveCategories;
+              const canAddNew = newCategoryText.trim() && !effectiveCategories.some((c) => c.toLowerCase() === newCategoryText.trim().toLowerCase());
+              const addNewCategory = () => {
+                const trimmed = newCategoryText.trim();
+                if (!trimmed || effectiveCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return;
+                setDbCategories((prev) => [...(prev || effectiveCategories), trimmed]);
+                setCategory(trimmed);
+                saveCategory(trimmed);
+                setNewCategoryText('');
+                setCategorySearch('');
+                setIsCategoryOpen(false);
+              };
               return (
                 <View style={styles.comboBoxDropdown}>
                   <View style={styles.searchRow}>
@@ -628,20 +767,30 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                     nestedScrollEnabled={true}
                   >
                     {filteredCats.map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[styles.comboBoxItem, category === cat && styles.comboBoxItemActive]}
-                        onPress={() => {
-                          setCategory(cat);
-                          setCategorySearch('');
-                          setIsCategoryOpen(false);
-                        }}
-                      >
-                        <Text style={styles.comboBoxItemIcon}>{getCategoryIcon(cat)}</Text>
-                        <Text style={[styles.comboBoxItemText, category === cat && styles.comboBoxItemTextActive]}>
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
+                      <View key={cat} style={[styles.comboBoxItem, styles.comboBoxItemRow, category === cat && styles.comboBoxItemActive]}>
+                        <TouchableOpacity
+                          style={styles.comboBoxItemTextTouchable}
+                          onPress={() => {
+                            setCategory(cat);
+                            setCategorySearch('');
+                            setIsCategoryOpen(false);
+                          }}
+                        >
+                          <View style={styles.comboBoxValue}>
+                            <Text style={styles.comboBoxItemIcon}>{getCategoryIcon(cat)}</Text>
+                            <Text style={[styles.comboBoxItemText, category === cat && styles.comboBoxItemTextActive]}>
+                              {cat}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteCategory(cat)}
+                          style={styles.deletePlaceBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.deletePlaceBtnText}>🗑</Text>
+                        </TouchableOpacity>
+                      </View>
                     ))}
                     {filteredCats.length === 0 && !categorySearch && (
                       <View style={styles.comboBoxItem}>
@@ -661,30 +810,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       onChangeText={setNewCategoryText}
                       placeholder="Add new category..."
                       placeholderTextColor={theme.colors.textTertiary}
-                      onSubmitEditing={() => {
-                        const trimmed = newCategoryText.trim();
-                        if (trimmed && !allCats.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
-                          setCustomCategories((prev) => [...prev, trimmed]);
-                          setCategory(trimmed);
-                          setNewCategoryText('');
-                          setCategorySearch('');
-                          setIsCategoryOpen(false);
-                        }
-                      }}
+                      onSubmitEditing={addNewCategory}
                       returnKeyType="done"
                     />
                     <TouchableOpacity
                       style={[styles.addCategoryBtn, !newCategoryText.trim() && styles.addCategoryBtnDisabled]}
-                      onPress={() => {
-                        const trimmed = newCategoryText.trim();
-                        if (trimmed && !allCats.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
-                          setCustomCategories((prev) => [...prev, trimmed]);
-                          setCategory(trimmed);
-                          setNewCategoryText('');
-                          setCategorySearch('');
-                          setIsCategoryOpen(false);
-                        }
-                      }}
+                      onPress={addNewCategory}
                       disabled={!newCategoryText.trim() || !canAddNew}
                     >
                       <Text style={styles.addCategoryBtnText}>+</Text>
@@ -860,7 +991,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 <Text style={styles.comboBoxArrow}>{isPlaceOpen ? '▲' : '▼'}</Text>
               </TouchableOpacity>
               {place ? (
-                <TouchableOpacity onPress={() => { setPlace(''); setAddress(''); setIsHouseMain(false); }}>
+                <TouchableOpacity onPress={() => { setPlace(''); setStreet(''); setIsHouseMain(false); }}>
                   <Text style={styles.searchClear}>✕</Text>
                 </TouchableOpacity>
               ) : null}
@@ -885,20 +1016,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       placeholder="Search or add place..."
                       placeholderTextColor={theme.colors.textTertiary}
                       returnKeyType="done"
-                      onSubmitEditing={() => {
-                        if (canAdd) {
-                          const p = newPlaceText.trim();
-                          setCustomPlaces((prev) => [...prev, p]);
-                          setPlace(p);
-                          setIsHouseMain(false);
-                          savePlace(p, address, userRegion);
-                          setNewPlaceText('');
-                          setIsPlaceOpen(false);
-                        }
-                      }}
                     />
                     {newPlaceText ? (
-                      <TouchableOpacity onPress={() => setNewPlaceText('')}>
+                      <TouchableOpacity onPress={() => { setNewPlaceText(''); setNewPlaceStreet(''); }}>
                         <Text style={styles.searchClear}>✕</Text>
                       </TouchableOpacity>
                     ) : null}
@@ -909,59 +1029,140 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                     nestedScrollEnabled={true}
                   >
                     {filtered.map((p) => (
-                      <TouchableOpacity
-                        key={p}
-                        style={[styles.comboBoxItem, place === p && styles.comboBoxItemActive]}
-                        onPress={() => {
-                          setPlace(p);
-                          setIsHouseMain(false);
-                          if (effectiveAddresses[p]) setAddress(effectiveAddresses[p]);
-                          setNewPlaceText('');
-                          setIsPlaceOpen(false);
-                        }}
-                      >
-                        <Text style={[styles.comboBoxItemText, place === p && styles.comboBoxItemTextActive]}>
-                          {p}
-                        </Text>
-                      </TouchableOpacity>
+                      <View key={p} style={[styles.comboBoxItem, styles.comboBoxItemRow, place === p && styles.comboBoxItemActive]}>
+                        <TouchableOpacity
+                          style={styles.comboBoxItemTextTouchable}
+                          onPress={() => {
+                            setPlace(p);
+                            setIsHouseMain(false);
+                            const parts = getPlaceParts(p);
+                            if (parts) {
+                              setStreet(parts.street);
+                              setCity(parts.city);
+                              setAddrState(parts.state);
+                              setZip(parts.zip);
+                            }
+                            setNewPlaceText('');
+                            setIsPlaceOpen(false);
+                          }}
+                        >
+                          <Text style={[styles.comboBoxItemText, place === p && styles.comboBoxItemTextActive]}>
+                            {p}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeletePlace(p)}
+                          style={styles.deletePlaceBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.deletePlaceBtnText}>🗑</Text>
+                        </TouchableOpacity>
+                      </View>
                     ))}
-                    {canAdd && (
-                      <TouchableOpacity
-                        style={styles.comboBoxItem}
-                        onPress={() => {
-                          const p = newPlaceText.trim();
-                          setCustomPlaces((prev) => [...prev, p]);
-                          setPlace(p);
-                          setIsHouseMain(false);
-                          savePlace(p, address, userRegion);
-                          setNewPlaceText('');
-                          setIsPlaceOpen(false);
-                        }}
-                      >
-                        <Text style={styles.addNewPlaceText}>+ Add "{newPlaceText.trim()}"</Text>
-                      </TouchableOpacity>
-                    )}
                     {filtered.length === 0 && !canAdd && (
                       <View style={styles.comboBoxItem}>
                         <Text style={styles.comboBoxItemText}>No matches</Text>
                       </View>
                     )}
                   </ScrollView>
+                  {canAdd && (
+                    <View style={styles.addPlaceForm}>
+                      <Text style={styles.addPlaceFormLabel}>New place — address required to add "{newPlaceText.trim()}"</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={newPlaceStreet}
+                        onChangeText={setNewPlaceStreet}
+                        placeholder="Street address"
+                        placeholderTextColor={theme.colors.textTertiary}
+                        returnKeyType="done"
+                      />
+                      <View style={styles.cityStateZipRow}>
+                        <TextInput
+                          style={[styles.input, styles.cityInput]}
+                          value={newPlaceCity}
+                          onChangeText={setNewPlaceCity}
+                          placeholder="City"
+                          placeholderTextColor={theme.colors.textTertiary}
+                        />
+                        <TextInput
+                          style={[styles.input, styles.stateInput]}
+                          value={newPlaceState}
+                          onChangeText={setNewPlaceState}
+                          placeholder="State"
+                          placeholderTextColor={theme.colors.textTertiary}
+                        />
+                        <TextInput
+                          style={[styles.input, styles.zipInput]}
+                          value={newPlaceZip}
+                          onChangeText={setNewPlaceZip}
+                          placeholder="Zip"
+                          placeholderTextColor={theme.colors.textTertiary}
+                          keyboardType="number-pad"
+                        />
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.addPlaceConfirmBtn, !newPlaceStreet.trim() && styles.addPlaceConfirmBtnDisabled]}
+                        disabled={!newPlaceStreet.trim()}
+                        onPress={() => {
+                          const p = newPlaceText.trim();
+                          const parts = { street: newPlaceStreet.trim(), city: newPlaceCity.trim(), state: newPlaceState.trim(), zip: newPlaceZip.trim() };
+                          setCustomPlaces((prev) => [...prev, p]);
+                          setPlace(p);
+                          setStreet(parts.street);
+                          setCity(parts.city);
+                          setAddrState(parts.state);
+                          setZip(parts.zip);
+                          setIsHouseMain(false);
+                          savePlace(p, parts, userRegion);
+                          setNewPlaceText('');
+                          setNewPlaceStreet('');
+                          setIsPlaceOpen(false);
+                        }}
+                      >
+                        <Text style={styles.addPlaceConfirmBtnText}>+ Add Place</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               );
             })()}
           </View>
 
           {/* Address */}
-          <View style={styles.section}>
+          <View style={styles.section} onLayout={(e) => { addressYRef.current = e.nativeEvent.layout.y; }}>
             <Text style={styles.label}>Address</Text>
             <TextInput
               style={styles.input}
-              value={address}
-              onChangeText={setAddress}
-              placeholder="123 Main Street, City, State"
+              value={street}
+              onChangeText={setStreet}
+              onFocus={() => scrollToY(addressYRef.current)}
+              placeholder="Street address"
               placeholderTextColor={theme.colors.textTertiary}
             />
+            <View style={styles.cityStateZipRow}>
+              <TextInput
+                style={[styles.input, styles.cityInput]}
+                value={city}
+                onChangeText={setCity}
+                placeholder="City"
+                placeholderTextColor={theme.colors.textTertiary}
+              />
+              <TextInput
+                style={[styles.input, styles.stateInput]}
+                value={addrState}
+                onChangeText={setAddrState}
+                placeholder="State"
+                placeholderTextColor={theme.colors.textTertiary}
+              />
+              <TextInput
+                style={[styles.input, styles.zipInput]}
+                value={zip}
+                onChangeText={setZip}
+                placeholder="Zip"
+                placeholderTextColor={theme.colors.textTertiary}
+                keyboardType="number-pad"
+              />
+            </View>
           </View>
 
           {/* Extra Locations (Location 2, 3, …) */}
@@ -973,7 +1174,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             const updateLoc = (patch: Partial<ExtraLocRow>) =>
               setExtraLocations((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
             return (
-              <View key={idx} style={styles.section}>
+              <View key={idx} style={styles.section} onLayout={(e) => { extraLocationYRefs.current[idx] = e.nativeEvent.layout.y; }}>
                 <View style={styles.locationHeader}>
                   <Text style={styles.label}>Location {idx + 2}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1019,7 +1220,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                         <Text style={styles.comboBoxArrow}>{openExtraDropdownIdx === idx ? '▲' : '▼'}</Text>
                       </TouchableOpacity>
                       {loc.place ? (
-                        <TouchableOpacity onPress={() => updateLoc({ place: '', address: '', isHouse: false })}>
+                        <TouchableOpacity onPress={() => updateLoc({ place: '', street: '', isHouse: false })}>
                           <Text style={styles.searchClear}>✕</Text>
                         </TouchableOpacity>
                       ) : null}
@@ -1035,49 +1236,136 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                             placeholderTextColor={theme.colors.textTertiary}
                             returnKeyType="done"
                             autoFocus
-                            onSubmitEditing={() => {
-                              if (canAdd) {
-                                const p = loc.placeSearch.trim();
-                                setCustomPlaces((prev) => [...prev, p]);
-                                updateLoc({ place: p, placeSearch: '', isHouse: false });
-                                savePlace(p, loc.address, userRegion);
-                                setOpenExtraDropdownIdx(null);
-                              }
-                            }}
                           />
-                          {loc.placeSearch ? <TouchableOpacity onPress={() => updateLoc({ placeSearch: '' })}><Text style={styles.searchClear}>✕</Text></TouchableOpacity> : null}
+                          {loc.placeSearch ? <TouchableOpacity onPress={() => updateLoc({ placeSearch: '', newPlaceStreet: '' })}><Text style={styles.searchClear}>✕</Text></TouchableOpacity> : null}
                         </View>
                         <ScrollView style={styles.comboBoxList} showsVerticalScrollIndicator nestedScrollEnabled>
                           {filtered.map((p) => (
-                            <TouchableOpacity key={p} style={[styles.comboBoxItem, loc.place === p && styles.comboBoxItemActive]}
-                              onPress={() => { updateLoc({ place: p, address: effectiveAddresses[p] || loc.address, placeSearch: '', isHouse: false }); setOpenExtraDropdownIdx(null); }}>
-                              <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
-                            </TouchableOpacity>
+                            <View key={p} style={[styles.comboBoxItem, styles.comboBoxItemRow, loc.place === p && styles.comboBoxItemActive]}>
+                              <TouchableOpacity
+                                style={styles.comboBoxItemTextTouchable}
+                                onPress={() => {
+                                  const parts = getPlaceParts(p);
+                                  updateLoc({
+                                    place: p,
+                                    street: parts ? parts.street : loc.street,
+                                    city: parts ? parts.city : loc.city,
+                                    state: parts ? parts.state : loc.state,
+                                    zip: parts ? parts.zip : loc.zip,
+                                    placeSearch: '',
+                                    newPlaceStreet: '',
+                                    isHouse: false,
+                                  });
+                                  setOpenExtraDropdownIdx(null);
+                                }}>
+                                <Text style={[styles.comboBoxItemText, loc.place === p && styles.comboBoxItemTextActive]}>{p}</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => handleDeletePlace(p)}
+                                style={styles.deletePlaceBtn}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={styles.deletePlaceBtnText}>🗑</Text>
+                              </TouchableOpacity>
+                            </View>
                           ))}
-                          {canAdd && (
-                            <TouchableOpacity style={styles.comboBoxItem} onPress={() => {
-                              const p = loc.placeSearch.trim();
-                              setCustomPlaces((prev) => [...prev, p]);
-                              updateLoc({ place: p, placeSearch: '', isHouse: false });
-                              savePlace(p, loc.address, userRegion);
-                              setOpenExtraDropdownIdx(null);
-                            }}>
-                              <Text style={styles.addNewPlaceText}>+ Add "{loc.placeSearch.trim()}"</Text>
-                            </TouchableOpacity>
-                          )}
                           {filtered.length === 0 && !canAdd && <View style={styles.comboBoxItem}><Text style={styles.comboBoxItemText}>No matches</Text></View>}
                         </ScrollView>
+                        {canAdd && (
+                          <View style={styles.addPlaceForm}>
+                            <Text style={styles.addPlaceFormLabel}>New place — address required to add "{loc.placeSearch.trim()}"</Text>
+                            <TextInput
+                              style={styles.input}
+                              value={loc.newPlaceStreet ?? ''}
+                              onChangeText={(t) => updateLoc({ newPlaceStreet: t })}
+                              placeholder="Street address"
+                              placeholderTextColor={theme.colors.textTertiary}
+                              returnKeyType="done"
+                            />
+                            <View style={styles.cityStateZipRow}>
+                              <TextInput
+                                style={[styles.input, styles.cityInput]}
+                                value={loc.newPlaceCity ?? (REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS).city}
+                                onChangeText={(t) => updateLoc({ newPlaceCity: t })}
+                                placeholder="City"
+                                placeholderTextColor={theme.colors.textTertiary}
+                              />
+                              <TextInput
+                                style={[styles.input, styles.stateInput]}
+                                value={loc.newPlaceState ?? (REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS).state}
+                                onChangeText={(t) => updateLoc({ newPlaceState: t })}
+                                placeholder="State"
+                                placeholderTextColor={theme.colors.textTertiary}
+                              />
+                              <TextInput
+                                style={[styles.input, styles.zipInput]}
+                                value={loc.newPlaceZip ?? (REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS).zip}
+                                onChangeText={(t) => updateLoc({ newPlaceZip: t })}
+                                placeholder="Zip"
+                                placeholderTextColor={theme.colors.textTertiary}
+                                keyboardType="number-pad"
+                              />
+                            </View>
+                            <TouchableOpacity
+                              style={[styles.addPlaceConfirmBtn, !(loc.newPlaceStreet ?? '').trim() && styles.addPlaceConfirmBtnDisabled]}
+                              disabled={!(loc.newPlaceStreet ?? '').trim()}
+                              onPress={() => {
+                                const street = (loc.newPlaceStreet ?? '').trim();
+                                if (!street) return;
+                                const regionDefault = REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS;
+                                const parts = {
+                                  street,
+                                  city: (loc.newPlaceCity ?? regionDefault.city).trim(),
+                                  state: (loc.newPlaceState ?? regionDefault.state).trim(),
+                                  zip: (loc.newPlaceZip ?? regionDefault.zip).trim(),
+                                };
+                                const p = loc.placeSearch.trim();
+                                setCustomPlaces((prev) => [...prev, p]);
+                                updateLoc({ place: p, ...parts, placeSearch: '', newPlaceStreet: '', isHouse: false });
+                                savePlace(p, parts, userRegion);
+                                setOpenExtraDropdownIdx(null);
+                              }}
+                            >
+                              <Text style={styles.addPlaceConfirmBtnText}>+ Add Place</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     )}
                   </>
                 )}
                 <TextInput
                   style={[styles.input, { marginTop: theme.spacing.sm }]}
-                  value={loc.address}
-                  onChangeText={(t) => updateLoc({ address: t })}
-                  placeholder="Address"
+                  value={loc.street}
+                  onChangeText={(t) => updateLoc({ street: t })}
+                  onFocus={() => scrollToY(extraLocationYRefs.current[idx] ?? 0)}
+                  placeholder="Street address"
                   placeholderTextColor={theme.colors.textTertiary}
                 />
+                <View style={styles.cityStateZipRow}>
+                  <TextInput
+                    style={[styles.input, styles.cityInput]}
+                    value={loc.city}
+                    onChangeText={(t) => updateLoc({ city: t })}
+                    placeholder="City"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                  <TextInput
+                    style={[styles.input, styles.stateInput]}
+                    value={loc.state}
+                    onChangeText={(t) => updateLoc({ state: t })}
+                    placeholder="State"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                  <TextInput
+                    style={[styles.input, styles.zipInput]}
+                    value={loc.zip}
+                    onChangeText={(t) => updateLoc({ zip: t })}
+                    placeholder="Zip"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="number-pad"
+                  />
+                </View>
                 <TouchableOpacity
                   style={[styles.input, styles.dateTrigger, { marginTop: theme.spacing.sm }]}
                   onPress={() => setDatePickerLocIdx(idx)}
@@ -1148,12 +1436,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           {/* Add location button */}
           <TouchableOpacity
             style={styles.addLocationBtn}
-            onPress={() => setExtraLocations((prev) => [...prev, {
-              place: '', address: '', eventDate: '',
-              startHour: '', startMin: '', startPeriod: 'AM',
-              endHour: '', endMin: '', endPeriod: 'PM',
-              placeSearch: '',
-            }])}
+            onPress={() => {
+              const regionDefault = REGION_DEFAULTS[userRegion] || DEFAULT_ADDRESS;
+              setExtraLocations((prev) => [...prev, {
+                place: '', street: '', city: regionDefault.city, state: regionDefault.state, zip: regionDefault.zip, eventDate: '',
+                startHour: '', startMin: '', startPeriod: 'AM',
+                endHour: '', endMin: '', endPeriod: 'PM',
+                placeSearch: '',
+              }]);
+            }}
           >
             <Text style={styles.addLocationBtnText}>+ Add Location</Text>
           </TouchableOpacity>
@@ -1667,6 +1958,46 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: theme.fontWeight.semibold,
   },
+  comboBoxItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  comboBoxItemTextTouchable: {
+    flex: 1,
+  },
+  deletePlaceBtn: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  deletePlaceBtnText: {
+    fontSize: 16,
+  },
+  addPlaceForm: {
+    padding: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  addPlaceFormLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+  },
+  addPlaceConfirmBtn: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.sm,
+    alignItems: 'center',
+    marginTop: theme.spacing.sm,
+  },
+  addPlaceConfirmBtnDisabled: {
+    backgroundColor: theme.colors.border,
+  },
+  addPlaceConfirmBtnText: {
+    fontSize: theme.fontSize.md,
+    color: '#fff',
+    fontWeight: theme.fontWeight.semibold,
+  },
 
   // Name
   nameSection: {
@@ -1697,6 +2028,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     minHeight: 46,
+  },
+  cityStateZipRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  cityInput: {
+    flex: 2,
+  },
+  stateInput: {
+    flex: 1,
+  },
+  zipInput: {
+    flex: 1,
   },
   notesInput: {
     minHeight: 100,

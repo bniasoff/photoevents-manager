@@ -39,6 +39,7 @@ yarn-error.*
 # IDE
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 *~
@@ -46,3 +47,13 @@ yarn-error.*
 # Logs
 logs
 *.log
+
+# Secrets / credentials
+client_secrets.json
+backups/
+
+# Raw SMS export dump - huge (hundreds of MB), exceeds GitHub's file size limit
+XML/
+
+# Windows stray redirect artifacts
+nul
